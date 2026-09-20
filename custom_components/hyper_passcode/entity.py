@@ -15,7 +15,10 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import (
+    AddConfigEntryEntitiesCallback,
+    AddEntitiesCallback,
+)
 
 from .const import DOMAIN, credential_device_identifier
 from .coordinator import (
@@ -38,27 +41,28 @@ def async_add_scope_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
     coordinator: HyperPasscodeCoordinator,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
     factories: Iterable[ScopeEntityFactory],
 ) -> None:
-    """Create entities for every scope, and for scopes added later.
+    """Create each scope's entities, and those of scopes added later.
 
-    Entities for a deleted scope are cleaned up by removing the scope's device, which
-    cascades, so this only ever needs to add.
+    ``config_subentry_id`` is what ties the entities to their scope, so Home Assistant
+    removes them itself when the scope is deleted. That is also why this only ever
+    needs to add.
     """
     known: set[str] = set()
     builders = list(factories)
 
     @callback
     def _refresh() -> None:
-        new: list[Entity] = []
         for scope_id, scope in coordinator.scopes.items():
             if scope_id in known:
                 continue
             known.add(scope_id)
-            new.extend(build(coordinator, scope) for build in builders)
-        if new:
-            async_add_entities(new)
+            async_add_entities(
+                [build(coordinator, scope) for build in builders],
+                config_subentry_id=scope_id,
+            )
 
     _refresh()
     entry.async_on_unload(

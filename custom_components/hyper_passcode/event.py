@@ -13,7 +13,7 @@ from typing import ClassVar
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HyperPasscodeConfigEntry
 from .const import (
@@ -32,7 +32,7 @@ from .models import Scope
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HyperPasscodeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up one event entity per scope."""
     async_add_scope_entities(

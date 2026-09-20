@@ -10,6 +10,63 @@
       "single_instance_allowed": "HyperPasscode is already set up."
     }
   },
+  "config_subentries": {
+    "scope": {
+      "entry_type": "Scope",
+      "initiate_flow": {
+        "user": "Add scope"
+      },
+      "abort": {
+        "reconfigure_successful": "Scope updated."
+      },
+      "step": {
+        "user": {
+          "title": "Add scope",
+          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "default_actions": "Default actions",
+            "code_length": "Code length",
+            "terminator_keys": "Terminator keys",
+            "inter_key_timeout": "Inter-key timeout",
+            "lockout_threshold": "Failed attempts before lockout",
+            "lockout_duration": "Lockout duration"
+          },
+          "data_description": {
+            "default_actions": "Run whenever a valid code is entered here, so the common case needs no automation at all.",
+            "code_length": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key.",
+            "terminator_keys": "Keys that submit what has been typed so far, usually # or *.",
+            "inter_key_timeout": "Clear a half-typed code after this many seconds without a keystroke.",
+            "lockout_threshold": "Leave empty to use the integration-wide setting. Set to 0 to disable lockout for this scope.",
+            "lockout_duration": "How long this scope refuses codes once it locks out. Leave empty to use the integration-wide setting."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit scope",
+          "description": "Changes take effect immediately. Lockout counters and any half-typed code are left alone.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "default_actions": "Default actions",
+            "code_length": "Code length",
+            "terminator_keys": "Terminator keys",
+            "inter_key_timeout": "Inter-key timeout",
+            "lockout_threshold": "Failed attempts before lockout",
+            "lockout_duration": "Lockout duration"
+          },
+          "data_description": {
+            "default_actions": "Run whenever a valid code is entered here.",
+            "code_length": "Submit automatically at this length. Leave empty to wait for a terminator key.",
+            "terminator_keys": "Keys that submit what has been typed so far.",
+            "inter_key_timeout": "Clear a half-typed code after this many seconds without a keystroke.",
+            "lockout_threshold": "Leave empty to use the integration-wide setting. Set to 0 to disable lockout for this scope.",
+            "lockout_duration": "How long this scope refuses codes once it locks out. Leave empty to use the integration-wide setting."
+          }
+        }
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {

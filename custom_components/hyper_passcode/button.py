@@ -14,7 +14,7 @@ from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import HyperPasscodeConfigEntry
@@ -31,7 +31,7 @@ DELIVERY_CODE_DURATION = timedelta(hours=2)
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HyperPasscodeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up one delivery-code button per scope."""
     async_add_scope_entities(

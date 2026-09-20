@@ -37,7 +37,7 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     async_register_services(hass)
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    entry.async_on_unload(entry.add_update_listener(_async_entry_updated))
     entry.async_on_unload(coordinator.async_shutdown)
 
     return True
@@ -46,16 +46,27 @@ async def async_setup_entry(
 async def async_unload_entry(
     hass: HomeAssistant, entry: HyperPasscodeConfigEntry
 ) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry, flushing anything still waiting to be written.
+
+    Saves are debounced, so without this an unload or reload could drop a code that
+    was created moments earlier.
+    """
+    await entry.runtime_data.store.async_save()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_reload_entry(
+async def _async_entry_updated(
     hass: HomeAssistant, entry: HyperPasscodeConfigEntry
 ) -> None:
-    """Reload when options change.
+    """React to a change on the config entry.
 
-    A reload is the honest response: settings such as ``per_credential_entities``
-    change which entities should exist at all.
+    Options and scopes both arrive here, and they want different handling. An options
+    change can alter which entities should exist at all -- ``per_credential_entities``
+    is the clear case -- so it reloads. A scope change is absorbed in place, because
+    reloading would reset lockout counters and keypad buffers on every edit.
     """
-    await hass.config_entries.async_reload(entry.entry_id)
+    coordinator = entry.runtime_data
+    if coordinator.async_options_changed():
+        await hass.config_entries.async_reload(entry.entry_id)
+        return
+    coordinator.async_sync_scopes()

@@ -10,6 +10,10 @@ DOMAIN: Final = "hyper_passcode"
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
 
+#: Scopes are config subentries, which is what gives them an "Add scope" button
+#: on the integration page and a configure dialog of their own.
+SUBENTRY_TYPE_SCOPE: Final = "scope"
+
 #: Credential device identifiers are prefixed so they can never be confused with a
 #: scope's, whatever ids happen to be generated.
 CREDENTIAL_DEVICE_PREFIX: Final = "credential"

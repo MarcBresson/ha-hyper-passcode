@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import CALLBACK_TYPE, Context, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -48,6 +48,7 @@ from .const import (
     DOMAIN,
     EVENT_SUBMISSION,
     REASON_TO_EVENT_TYPE,
+    SUBENTRY_TYPE_SCOPE,
     CodeType,
     EventType,
     Outcome,
@@ -139,6 +140,8 @@ class HyperPasscodeCoordinator:
         self.store = store
         self._index: dict[str, str] = {}
         self._runtime: dict[str, ScopeRuntime] = {}
+        self._scopes: dict[str, Scope] = {}
+        self._known_options: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -147,8 +150,57 @@ class HyperPasscodeCoordinator:
     async def async_load(self) -> None:
         """Load persisted data and rebuild in-memory state."""
         await self.store.async_load()
+        self._known_options = dict(self.entry.options)
+        self._rebuild_scopes()
         self._rebuild_index()
         self._rebuild_runtime()
+
+    @callback
+    def async_options_changed(self) -> bool:
+        """Whether the entry's options differ from the ones currently in effect."""
+        return dict(self.entry.options) != self._known_options
+
+    @callback
+    def async_sync_scopes(self) -> None:
+        """Pick up scope changes made through the UI, without a reload.
+
+        Editing a scope from the integration page updates a subentry, which fires the
+        entry's update listener. Reloading there would be simpler, but it would also
+        throw away lockout counters and half-typed keypad buffers every time an
+        unrelated scope was touched, so the change is absorbed in place instead.
+        """
+        before = set(self._scopes)
+        self._rebuild_scopes()
+        after = set(self._scopes)
+
+        for scope_id in after - before:
+            self._runtime.setdefault(scope_id, ScopeRuntime())
+        for scope_id in before - after:
+            self._runtime.pop(scope_id, None)
+
+        for scope_id in after & before:
+            # The cached action script may no longer match the scope's config.
+            self.runtime(scope_id).script = None
+            async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope_id))
+
+        if before != after:
+            async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
+
+    def _rebuild_scopes(self) -> None:
+        """Read the scopes back out of the config entry's subentries.
+
+        Scopes are configuration, so they live as subentries rather than in the
+        store: that is what gives them an "Add scope" button on the integration
+        page and a per-scope configure dialog. Any change to them reloads the entry,
+        which lands back here.
+        """
+        self._scopes = {
+            subentry_id: Scope.from_dict(
+                {**subentry.data, "scope_id": subentry_id, "name": subentry.title}
+            )
+            for subentry_id, subentry in self.entry.subentries.items()
+            if subentry.subentry_type == SUBENTRY_TYPE_SCOPE
+        }
 
     def _rebuild_index(self) -> None:
         """Rebuild the lookup-index to credential-id map."""
@@ -163,7 +215,7 @@ class HyperPasscodeCoordinator:
         Deriving last-used from the audit log rather than persisting it separately
         keeps a single source of truth.
         """
-        self._runtime = {scope_id: ScopeRuntime() for scope_id in self.data.scopes}
+        self._runtime = {scope_id: ScopeRuntime() for scope_id in self._scopes}
         for entry in self.data.audit:
             if entry.outcome is not Outcome.VALID:
                 continue
@@ -193,8 +245,8 @@ class HyperPasscodeCoordinator:
 
     @property
     def scopes(self) -> dict[str, Scope]:
-        """Configured scopes by id."""
-        return self.data.scopes
+        """Configured scopes by id, which is also their subentry id."""
+        return self._scopes
 
     @property
     def credentials(self) -> dict[str, Credential]:
@@ -204,7 +256,7 @@ class HyperPasscodeCoordinator:
     def get_scope(self, scope_id: str) -> Scope:
         """Return a scope or raise."""
         try:
-            return self.data.scopes[scope_id]
+            return self._scopes[scope_id]
         except KeyError:
             raise UnknownScopeError(f"No such scope: {scope_id}") from None
 
@@ -786,41 +838,69 @@ class HyperPasscodeCoordinator:
     # Scope CRUD
     # ------------------------------------------------------------------
 
+    # Each of these mutates the config entry's subentries, which fires the entry's
+    # update listener and reloads the integration. The reload is what rebuilds the
+    # scope list and recreates entities, so none of them touch entities directly.
+
     async def async_create_scope(self, **kwargs: Any) -> Scope:
-        """Add a scope and let the platforms create its entities."""
+        """Add a scope as a config subentry."""
         scope = Scope(scope_id=uuid4().hex, **kwargs)
-        self.data.scopes[scope.scope_id] = scope
-        self._runtime[scope.scope_id] = ScopeRuntime()
-        self.store.async_schedule_save()
+        data = scope.to_dict()
+        name = data.pop("name")
+        data.pop("scope_id")
+
+        self.hass.config_entries.async_add_subentry(
+            self.entry,
+            ConfigSubentry(
+                data=data,
+                subentry_id=scope.scope_id,
+                subentry_type=SUBENTRY_TYPE_SCOPE,
+                title=name,
+                unique_id=None,
+            ),
+        )
+        # Reflect it at once, so a caller can use the scope immediately.
+        self._scopes[scope.scope_id] = scope
+        self._runtime.setdefault(scope.scope_id, ScopeRuntime())
         async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
         return scope
 
     async def async_update_scope(self, scope_id: str, changes: dict[str, Any]) -> Scope:
-        """Apply field changes to a scope."""
+        """Apply field changes to a scope's subentry."""
         scope = self.get_scope(scope_id)
         for key, value in changes.items():
             if hasattr(scope, key):
                 setattr(scope, key, value)
+
+        data = scope.to_dict()
+        name = data.pop("name")
+        data.pop("scope_id")
+
+        self.hass.config_entries.async_update_subentry(
+            self.entry,
+            self.entry.subentries[scope_id],
+            data=data,
+            title=name,
+        )
         # Force the cached action script to be rebuilt on next use.
         self.runtime(scope_id).script = None
-        self.store.async_schedule_save()
         async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope_id))
         return scope
 
     async def async_delete_scope(self, scope_id: str) -> None:
-        """Remove a scope, its device and every grant pointing at it."""
-        self.get_scope(scope_id)
-        del self.data.scopes[scope_id]
-        self._runtime.pop(scope_id, None)
+        """Remove a scope and every grant pointing at it.
 
-        # Removing the device cascades to the scope's entities.
-        if device := self._async_scope_device(scope_id):
-            dr.async_get(self.hass).async_remove_device(device.id)
+        Home Assistant removes the subentry's devices and entities for us.
+        """
+        self.get_scope(scope_id)
+        self.hass.config_entries.async_remove_subentry(self.entry, scope_id)
+        self._scopes.pop(scope_id, None)
+        self._runtime.pop(scope_id, None)
+        async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
 
         for credential in self.data.credentials.values():
             credential.grants = [g for g in credential.grants if g.scope_id != scope_id]
         self.store.async_schedule_save()
-        async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
 
     @callback

@@ -19,7 +19,7 @@ from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
 from .crypto import generate_integration_key
-from .models import AuditEntry, Credential, Scope
+from .models import AuditEntry, Credential
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,14 +31,19 @@ SAVE_DELAY = 10
 class StoredData:
     """Everything HyperPasscode persists.
 
-    Integration-level *settings* deliberately live in the config entry's options
-    instead, so the standard options flow and the management card edit one source of
-    truth rather than two.
+    Two things deliberately live elsewhere, both on the config entry, so that the
+    standard Home Assistant UI edits one source of truth rather than two:
+
+    - integration-level *settings* are the entry's options
+    - *scopes* are config subentries, which is what gives them an "Add scope" button
+      and a per-scope configure dialog
+
+    What is left here is data rather than configuration: the lookup key, the
+    credentials, and the audit log.
     """
 
     #: Random key backing every credential's lookup index. Generated once.
     key: str
-    scopes: dict[str, Scope] = field(default_factory=dict)
     credentials: dict[str, Credential] = field(default_factory=dict)
     audit: list[AuditEntry] = field(default_factory=list)
 
@@ -51,7 +56,6 @@ class StoredData:
         """Serialise for the store."""
         return {
             "key": self.key,
-            "scopes": {k: v.to_dict() for k, v in self.scopes.items()},
             "credentials": {k: v.to_dict() for k, v in self.credentials.items()},
             "audit": [entry.to_dict() for entry in self.audit],
         }
@@ -61,9 +65,6 @@ class StoredData:
         """Rebuild from the store."""
         return cls(
             key=data.get("key") or generate_integration_key(),
-            scopes={
-                k: Scope.from_dict(v) for k, v in (data.get("scopes") or {}).items()
-            },
             credentials={
                 k: Credential.from_dict(v)
                 for k, v in (data.get("credentials") or {}).items()

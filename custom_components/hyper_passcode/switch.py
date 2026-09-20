@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HyperPasscodeConfigEntry
 from .coordinator import HyperPasscodeCoordinator
@@ -17,7 +17,7 @@ from .models import Credential
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HyperPasscodeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up one enable switch per credential."""
     async_add_credential_entities(

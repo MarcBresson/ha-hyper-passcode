@@ -43,7 +43,8 @@ Entry
 
 - `submit` for a whole code, `submit_key` for one keystroke at a time
 - Keystroke buffering with a terminator key, fixed-length auto-submit and an idle timeout
-- Brute-force lockout per scope, with its own threshold and duration
+- Brute-force lockout, with a threshold and duration that can be set per scope or left to
+  inherit the integration-wide default
 
 Automations
 
@@ -78,12 +79,23 @@ from Settings → Devices & Services.
 
 ## Quick start
 
-Everything is exposed as an action, so you can try it out from Developer Tools → Actions
-before building any UI.
-
-### 1. Create a scope
+### 1. Add a scope
 
 A scope is a thing codes are entered against. It shows up as a device with its own entities.
+
+Go to Settings → Devices & Services → HyperPasscode and press **Add scope**. You give it a
+name, and optionally:
+
+- default actions to run whenever a valid code is entered here, which is what lets the
+  common case work without any automation at all
+- a fixed code length, terminator keys and an inter-key timeout, for physical keypads
+- how many failed attempts lock this scope out, and for how long
+
+Scopes can be edited or deleted from the same page afterwards. Editing one takes effect
+immediately and leaves its lockout counters and any half-typed code alone.
+
+Everything below is also exposed as an action, so a scope can be created from Developer
+Tools → Actions or from an automation instead:
 
 ```yaml
 action: hyper_passcode.create_scope
@@ -95,8 +107,7 @@ data:
         entity_id: lock.front_door
 ```
 
-With `default_actions` set, the common case needs no automation at all. Note the returned
-`scope_id`.
+Note the returned `scope_id`, which the remaining steps need.
 
 ### 2. Create a code
 
@@ -221,6 +232,10 @@ half-typed code doesn't linger.
 | Lockout duration | 300s | Can be overridden per scope |
 | Audit log size | 1000 | Ring buffer. Every submission also fires an event, so the recorder keeps the full history anyway |
 | Log what was typed on failure | off | Off by default, because a failed attempt is usually a typo of a real code, and recording it would leak that code into your logs |
+
+These are the defaults for the whole integration. The two lockout settings can be overridden
+per scope from that scope's dialog: leave them blank there to inherit the values above, or
+fill them in to give one door a stricter threshold than the rest of the house.
 
 Collision refusal isn't configurable. Two identical active codes in one scope would make the
 audit log unattributable, which defeats the point of the monitoring.

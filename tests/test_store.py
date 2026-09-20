@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hyper_passcode.const import (
+    DEFAULT_LOCKOUT_DURATION,
+    DEFAULT_LOCKOUT_THRESHOLD,
     DOMAIN,
     MAX_RECENT_USES,
     STORAGE_KEY,
+    SUBENTRY_TYPE_SCOPE,
     CodeType,
     Outcome,
 )
@@ -26,22 +30,10 @@ from custom_components.hyper_passcode.store import StoredData
 WHEN = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 
 #: A complete payload in the current (version 1) schema. Future migrations are tested
-#: by adding their own fixture alongside this one.
+#: by adding their own fixture alongside this one. Scopes are deliberately absent:
+#: they are config subentries, not store content.
 V1_FIXTURE = {
     "key": "a" * 64,
-    "scopes": {
-        "scope-1": {
-            "scope_id": "scope-1",
-            "name": "Front Door",
-            "icon": "mdi:door",
-            "default_actions": [{"event": "opened"}],
-            "code_length": 6,
-            "terminator_keys": ["#", "*"],
-            "inter_key_timeout": 8.0,
-            "lockout_threshold": 4,
-            "lockout_duration": 120,
-        }
-    },
     "credentials": {
         "cred-1": {
             "credential_id": "cred-1",
@@ -95,11 +87,6 @@ def test_v1_payload_loads_completely():
 
     assert data.key == "a" * 64
 
-    scope = data.scopes["scope-1"]
-    assert scope.name == "Front Door"
-    assert scope.terminator_keys == ["#", "*"]
-    assert scope.lockout_threshold == 4
-
     credential = data.credentials["cred-1"]
     assert credential.label == "Cleaner"
     assert credential.code_type is CodeType.PIN
@@ -137,7 +124,6 @@ def test_a_sparse_payload_gets_sensible_defaults():
     assert credential.tags == []
     assert credential.grants == []
     assert credential.policy.max_uses is None
-    assert data.scopes == {}
     assert data.audit == []
 
 
@@ -192,9 +178,10 @@ def test_scope_and_audit_round_trip():
     assert AuditEntry.from_dict(entry.to_dict()).to_dict() == entry.to_dict()
 
 
-async def test_the_integration_loads_persisted_data(
+async def test_the_integration_loads_from_both_stores(
     hass: HomeAssistant, hass_storage
 ):
+    # Credentials come from the store; scopes come from config subentries.
     hass_storage[STORAGE_KEY] = {
         "version": 1,
         "minor_version": 1,
@@ -202,16 +189,55 @@ async def test_the_integration_loads_persisted_data(
         "data": V1_FIXTURE,
     }
 
-    entry = MockConfigEntry(domain=DOMAIN, title="HyperPasscode", data={})
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="HyperPasscode",
+        data={},
+        subentries_data=[
+            ConfigSubentryData(
+                data={
+                    "icon": "mdi:door",
+                    "default_actions": [{"event": "opened"}],
+                    "code_length": 6,
+                    "terminator_keys": ["#", "*"],
+                    "inter_key_timeout": 8.0,
+                    "lockout_threshold": 4,
+                    "lockout_duration": 120,
+                },
+                subentry_type=SUBENTRY_TYPE_SCOPE,
+                title="Front Door",
+                unique_id=None,
+            )
+        ],
+    )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     coordinator = entry.runtime_data
-    assert "scope-1" in coordinator.scopes
     assert coordinator.credentials["cred-1"].label == "Cleaner"
-    # last_used is recovered from the audit log rather than stored separately.
-    assert coordinator.runtime("scope-1").last_label == "Cleaner"
+
+    (scope,) = coordinator.scopes.values()
+    assert scope.name == "Front Door"
+    assert scope.terminator_keys == ["#", "*"]
+    assert scope.code_length == 6
+    # The per-scope lockout overrides win over the integration-wide defaults.
+    assert coordinator.lockout_threshold(scope) == 4
+    assert coordinator.lockout_duration(scope) == 120
+
+
+async def test_scope_lockout_falls_back_to_the_integration_setting(
+    hass: HomeAssistant, entry, coordinator
+):
+    override = await coordinator.async_create_scope(
+        name="Gate", lockout_threshold=2, lockout_duration=60
+    )
+    inherited = await coordinator.async_create_scope(name="Front Door")
+
+    assert coordinator.lockout_threshold(override) == 2
+    assert coordinator.lockout_duration(override) == 60
+    assert coordinator.lockout_threshold(inherited) == DEFAULT_LOCKOUT_THRESHOLD
+    assert coordinator.lockout_duration(inherited) == DEFAULT_LOCKOUT_DURATION
 
 
 async def test_credentials_survive_a_reload(hass: HomeAssistant, entry, coordinator):
