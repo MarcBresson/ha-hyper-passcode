@@ -4,9 +4,6 @@ These are the whole of M1's interface: everything the management card will event
 do is reachable here from Developer Tools first.
 """
 
-from __future__ import annotations
-
-from datetime import datetime
 from typing import Any
 
 import voluptuous as vol
@@ -19,7 +16,6 @@ from homeassistant.core import (
 )
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
-from homeassistant.util import dt as dt_util
 
 from . import audit as audit_log
 from .const import (
@@ -44,6 +40,7 @@ from .const import (
     Source,
 )
 from .coordinator import HyperPasscodeCoordinator
+from .helpers import to_utc as _to_utc
 from .models import Policy
 
 SERVICE_DELETE_CODE = "delete_code"
@@ -106,9 +103,7 @@ CREATE_OTP_SCHEMA = vol.Schema(
         vol.Optional("valid_from"): cv.datetime,
         vol.Optional("valid_until"): cv.datetime,
         vol.Optional("duration"): cv.positive_time_period,
-        vol.Optional("max_uses", default=1): vol.All(
-            vol.Coerce(int), vol.Range(min=1)
-        ),
+        vol.Optional("max_uses", default=1): vol.All(vol.Coerce(int), vol.Range(min=1)),
         vol.Optional("length"): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("keep_viewable", default=True): cv.boolean,
     }
@@ -165,19 +160,6 @@ UPDATE_SCOPE_SCHEMA = CREATE_SCOPE_SCHEMA.extend(
         vol.Optional("name"): cv.string,
     }
 )
-
-
-def _to_utc(value: datetime | None) -> datetime | None:
-    """Normalise a service-supplied datetime to aware UTC.
-
-    A naive value is read as local time, which is what somebody typing
-    ``2026-09-21 14:00`` into the UI means.
-    """
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
-    return dt_util.as_utc(value)
 
 
 def _policy_from_call(data: dict[str, Any]) -> Policy:

@@ -4,10 +4,11 @@ Kept separate from the coordinator so the device automation modules, which Home
 Assistant imports on their own, do not have to reach into it.
 """
 
-from __future__ import annotations
+from datetime import datetime
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
+from homeassistant.util import dt as dt_util
 
 from .const import CREDENTIAL_DEVICE_PREFIX, DOMAIN
 from .coordinator import HyperPasscodeCoordinator
@@ -32,3 +33,16 @@ def async_get_coordinator(hass: HomeAssistant) -> HyperPasscodeCoordinator | Non
     """Return the loaded coordinator, if the integration is set up."""
     entries = hass.config_entries.async_loaded_entries(DOMAIN)
     return entries[0].runtime_data if entries else None
+
+
+def to_utc(value: datetime | None) -> datetime | None:
+    """Normalise a user-supplied datetime to aware UTC.
+
+    A naive value is read as local time, which is what somebody typing
+    ``2026-09-21 14:00`` into a form means.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    return dt_util.as_utc(value)

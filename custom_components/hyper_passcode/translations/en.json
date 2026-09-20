@@ -11,6 +11,82 @@
     }
   },
   "config_subentries": {
+    "credential": {
+      "entry_type": "Code",
+      "initiate_flow": {
+        "user": "Add code"
+      },
+      "abort": {
+        "reconfigure_successful": "Code updated."
+      },
+      "error": {
+        "code_collision": "That code is already in use. Two identical codes would make the audit log unattributable.",
+        "weak_code": "That code was rejected as weak. Turn off 'Reject weak codes' in the integration settings to allow it."
+      },
+      "step": {
+        "user": {
+          "title": "Add code",
+          "description": "Leave the code blank to have one generated. You will be shown it on the next step.",
+          "data": {
+            "name": "Name",
+            "code": "Code",
+            "scope_ids": "Works on",
+            "keep_viewable": "Keep code viewable",
+            "owner": "Owner",
+            "tags": "Tags",
+            "notes": "Notes",
+            "valid_from": "Valid from",
+            "valid_until": "Valid until",
+            "max_uses": "Maximum uses",
+            "schedule_entities": "Schedules",
+            "condition_entities": "Conditions"
+          },
+          "data_description": {
+            "name": "What this code is for, such as Cleaner or Grocery delivery.",
+            "code": "Leave empty to generate one.",
+            "scope_ids": "The scopes this code opens. A code with no scope cannot be used anywhere yet.",
+            "keep_viewable": "Stores the code in clear text so it can be read back and shared again. Without this it can only be regenerated.",
+            "owner": "The person this code belongs to. Their name then appears in the audit log and in automations.",
+            "tags": "Labels for filtering, and for revoking a whole group of codes at once.",
+            "valid_from": "Leave empty to make it usable straight away.",
+            "valid_until": "Leave empty for no expiry.",
+            "max_uses": "Lifetime limit. Set to 1 for a one-time code.",
+            "schedule_entities": "Schedule helpers that must all be on. These recur weekly, so pair them with the dates above for a date range.",
+            "condition_entities": "Any on/off entities that must all be on. Point one at a calendar to make the code live only during matching events."
+          }
+        },
+        "created": {
+          "title": "Code created",
+          "description": "The code for {label} is:\n\n**{code}**\n\nWrite it down now. Unless you ticked 'Keep code viewable' this is the only time it will be shown. Press Submit to save it."
+        },
+        "reconfigure": {
+          "title": "Edit code",
+          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.",
+          "data": {
+            "name": "Name",
+            "code": "New code",
+            "scope_ids": "Works on",
+            "keep_viewable": "Keep code viewable",
+            "owner": "Owner",
+            "tags": "Tags",
+            "notes": "Notes",
+            "valid_from": "Valid from",
+            "valid_until": "Valid until",
+            "max_uses": "Maximum uses",
+            "schedule_entities": "Schedules",
+            "condition_entities": "Conditions"
+          },
+          "data_description": {
+            "code": "Leave empty to keep the current code.",
+            "scope_ids": "The scopes this code opens.",
+            "keep_viewable": "Turning this off discards the stored copy of the code, so it can no longer be read back.",
+            "max_uses": "Counted against the uses already recorded, so lowering it below the current count retires the code.",
+            "schedule_entities": "Schedule helpers that must all be on.",
+            "condition_entities": "Any on/off entities that must all be on."
+          }
+        }
+      }
+    },
     "scope": {
       "entry_type": "Scope",
       "initiate_flow": {

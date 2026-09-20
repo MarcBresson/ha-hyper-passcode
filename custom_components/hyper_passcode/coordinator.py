@@ -4,8 +4,6 @@ Everything that mutates HyperPasscode state goes through here, so there is exact
 place where a code is checked, a use is counted and an action is fired.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -48,6 +46,7 @@ from .const import (
     DOMAIN,
     EVENT_SUBMISSION,
     REASON_TO_EVENT_TYPE,
+    SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
     CodeType,
     EventType,
@@ -141,6 +140,7 @@ class HyperPasscodeCoordinator:
         self._index: dict[str, str] = {}
         self._runtime: dict[str, ScopeRuntime] = {}
         self._scopes: dict[str, Scope] = {}
+        self._credentials: dict[str, Credential] = {}
         self._known_options: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
@@ -152,8 +152,39 @@ class HyperPasscodeCoordinator:
         await self.store.async_load()
         self._known_options = dict(self.entry.options)
         self._rebuild_scopes()
+        self._rebuild_credentials()
         self._rebuild_index()
         self._rebuild_runtime()
+
+    def _rebuild_credentials(self) -> None:
+        """Join each credential's subentry to its stored secret.
+
+        Secrets left behind by a half-finished add are dropped here rather than
+        lingering: without a subentry there is nothing that could use them.
+        """
+        seen: set[str] = set()
+        for subentry in self.entry.subentries.values():
+            if subentry.subentry_type != SUBENTRY_TYPE_CREDENTIAL:
+                continue
+            config = dict(subentry.data)
+            credential_id = config["credential_id"]
+            seen.add(credential_id)
+            fresh = Credential.assemble(
+                subentry.title, config, self.data.secrets.get(credential_id, {})
+            )
+            if (existing := self._credentials.get(credential_id)) is None:
+                self._credentials[credential_id] = fresh
+            else:
+                existing.update_from(fresh)
+
+        for credential_id in set(self._credentials) - seen:
+            del self._credentials[credential_id]
+
+        orphaned = set(self.data.secrets) - set(self._credentials)
+        for credential_id in orphaned:
+            del self.data.secrets[credential_id]
+        if orphaned:
+            self.store.async_schedule_save()
 
     @callback
     def async_options_changed(self) -> bool:
@@ -161,14 +192,31 @@ class HyperPasscodeCoordinator:
         return dict(self.entry.options) != self._known_options
 
     @callback
-    def async_sync_scopes(self) -> None:
-        """Pick up scope changes made through the UI, without a reload.
+    def async_sync_subentries(self) -> None:
+        """Pick up scope and credential changes made through the UI, without a reload.
 
-        Editing a scope from the integration page updates a subentry, which fires the
+        Editing either from the integration page updates a subentry, which fires the
         entry's update listener. Reloading there would be simpler, but it would also
         throw away lockout counters and half-typed keypad buffers every time an
-        unrelated scope was touched, so the change is absorbed in place instead.
+        unrelated item was touched, so the change is absorbed in place instead.
         """
+        self._sync_credentials()
+        self._sync_scopes()
+
+    def _sync_credentials(self) -> None:
+        """Absorb credential subentry changes, keeping live counters intact."""
+        before = set(self._credentials)
+        self._rebuild_credentials()
+        self._rebuild_index()
+        if before != set(self._credentials):
+            async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
+        for credential_id in before & set(self._credentials):
+            async_dispatcher_send(
+                self.hass, SIGNAL_CREDENTIAL_UPDATED.format(credential_id)
+            )
+
+    def _sync_scopes(self) -> None:
+        """Absorb scope subentry changes, keeping lockout state and buffers intact."""
         before = set(self._scopes)
         self._rebuild_scopes()
         after = set(self._scopes)
@@ -206,7 +254,7 @@ class HyperPasscodeCoordinator:
         """Rebuild the lookup-index to credential-id map."""
         self._index = {
             credential.lookup_index: credential_id
-            for credential_id, credential in self.data.credentials.items()
+            for credential_id, credential in self._credentials.items()
         }
 
     def _rebuild_runtime(self) -> None:
@@ -250,8 +298,8 @@ class HyperPasscodeCoordinator:
 
     @property
     def credentials(self) -> dict[str, Credential]:
-        """Configured credentials by id."""
-        return self.data.credentials
+        """Configured credentials by id, assembled from subentry and store."""
+        return self._credentials
 
     def get_scope(self, scope_id: str) -> Scope:
         """Return a scope or raise."""
@@ -263,7 +311,7 @@ class HyperPasscodeCoordinator:
     def get_credential(self, credential_id: str) -> Credential:
         """Return a credential or raise."""
         try:
-            return self.data.credentials[credential_id]
+            return self._credentials[credential_id]
         except KeyError:
             raise UnknownCredentialError(
                 f"No such credential: {credential_id}"
@@ -366,7 +414,7 @@ class HyperPasscodeCoordinator:
             runtime.last_used = now
             runtime.last_label = credential.label
             self._reset_failures(scope_id)
-            self.store.async_schedule_save()
+            self.async_save_credential(credential)
             async_dispatcher_send(
                 self.hass, SIGNAL_CREDENTIAL_UPDATED.format(credential.credential_id)
             )
@@ -426,7 +474,7 @@ class HyperPasscodeCoordinator:
         if credential_id is None:
             return None
 
-        credential = self.data.credentials.get(credential_id)
+        credential = self._credentials.get(credential_id)
         if credential is None:
             return None
         if not verify(code, credential.lookup_index, self.data.key):
@@ -490,9 +538,7 @@ class HyperPasscodeCoordinator:
                 ATTR_SCOPE_ID: scope.scope_id,
                 "scope_name": scope.name,
                 "device_id": self.async_device_id(scope.scope_id),
-                ATTR_OUTCOME: str(
-                    Outcome.VALID if result.valid else Outcome.INVALID
-                ),
+                ATTR_OUTCOME: str(Outcome.VALID if result.valid else Outcome.INVALID),
                 "event_type": str(result.event_type),
                 ATTR_REASON: str(result.reason) if result.reason else None,
                 ATTR_CREDENTIAL_ID: result.credential_id,
@@ -519,7 +565,7 @@ class HyperPasscodeCoordinator:
             )
             runtime.script_source = list(scope.default_actions)
 
-        credential = self.data.credentials.get(result.credential_id or "")
+        credential = self._credentials.get(result.credential_id or "")
         try:
             await runtime.script.async_run(
                 {
@@ -657,10 +703,15 @@ class HyperPasscodeCoordinator:
         notes: str = "",
         policy: Policy | None = None,
         length: int | None = None,
+        persist: bool = True,
     ) -> tuple[Credential, str]:
         """Create a credential, generating a code when one was not supplied.
 
         Returns the credential and the code in clear, so the caller can show it once.
+
+        ``persist=False`` builds the credential without writing it anywhere, which is
+        what lets the add dialog show the generated code on a confirmation step and
+        only commit once the user has seen it.
         """
         for scope_id in scope_ids or []:
             self.get_scope(scope_id)
@@ -687,11 +738,70 @@ class HyperPasscodeCoordinator:
             updated_at=now,
         )
 
-        self.data.credentials[credential.credential_id] = credential
-        self._index[credential.lookup_index] = credential.credential_id
-        self.store.async_schedule_save()
-        async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
+        if persist:
+            self.async_persist_credential(credential)
         return credential, code
+
+    @callback
+    def async_stash_secret(self, credential: Credential) -> None:
+        """Write a credential's secret half to the private store, and nothing else.
+
+        The add dialog calls this and then lets Home Assistant create the subentry as
+        the flow finishes. The credential deliberately does not appear in
+        ``credentials`` yet: it is the subentry appearing that makes it real, and
+        that is what triggers its entities being created.
+        """
+        self.data.secrets[credential.credential_id] = credential.secret_dict()
+        self.store.async_schedule_save()
+
+    @callback
+    def async_persist_credential(self, credential: Credential) -> None:
+        """Write a new credential to both halves of its storage.
+
+        The secret goes to the private store first, so a credential is never visible
+        as a subentry without one.
+        """
+        # Registered before the rebuild so that rebuild updates this very object
+        # rather than replacing it -- the caller is holding it.
+        self._credentials[credential.credential_id] = credential
+        self.async_stash_secret(credential)
+        self.hass.config_entries.async_add_subentry(
+            self.entry,
+            ConfigSubentry(
+                data=credential.config_dict(),
+                subentry_id=credential.credential_id,
+                subentry_type=SUBENTRY_TYPE_CREDENTIAL,
+                title=credential.label,
+                unique_id=None,
+            ),
+        )
+        # Reflect it at once rather than waiting for the entry's update listener, so
+        # a caller can use the credential on the very next line.
+        self._rebuild_credentials()
+        self._rebuild_index()
+        async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
+
+    @callback
+    def async_credential_subentry(self, credential_id: str) -> ConfigSubentry | None:
+        """Find a credential's subentry.
+
+        Matched on the ``credential_id`` inside the subentry's data rather than on the
+        subentry id, because a credential added through the dialog gets an id Home
+        Assistant chose, while one added through an action gets ours.
+        """
+        for subentry in self.entry.subentries.values():
+            if (
+                subentry.subentry_type == SUBENTRY_TYPE_CREDENTIAL
+                and subentry.data.get("credential_id") == credential_id
+            ):
+                return subentry
+        return None
+
+    @callback
+    def async_credential_subentry_id(self, credential_id: str) -> str | None:
+        """Return the subentry id a credential's entities attach to."""
+        subentry = self.async_credential_subentry(credential_id)
+        return subentry.subentry_id if subentry else None
 
     async def async_create_otp(
         self,
@@ -776,23 +886,47 @@ class HyperPasscodeCoordinator:
             )
 
         credential.updated_at = dt_util.utcnow()
-        self.store.async_schedule_save()
+        self.async_save_credential(credential)
         async_dispatcher_send(
             self.hass, SIGNAL_CREDENTIAL_UPDATED.format(credential_id)
         )
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
         return credential
 
+    @callback
+    def async_save_credential(self, credential: Credential) -> None:
+        """Write an existing credential back to both halves of its storage."""
+        self.data.secrets[credential.credential_id] = credential.secret_dict()
+        self.store.async_schedule_save()
+
+        subentry = self.async_credential_subentry(credential.credential_id)
+        if subentry is None:
+            return
+
+        config = credential.config_dict()
+        # Only touch the config entry when the configuration actually changed; a use
+        # being recorded must not rewrite it.
+        if dict(subentry.data) != config or subentry.title != credential.label:
+            self.hass.config_entries.async_update_subentry(
+                self.entry, subentry, data=config, title=credential.label
+            )
+
     async def async_delete_credential(self, credential_id: str) -> None:
-        """Remove a credential, its device and therefore its entities."""
+        """Remove a credential, its secret and its entities."""
         credential = self.get_credential(credential_id)
         self._index.pop(credential.lookup_index, None)
-        del self.data.credentials[credential_id]
+        self._credentials.pop(credential_id, None)
+        self.data.secrets.pop(credential_id, None)
+        self.store.async_schedule_save()
 
-        if device := self._async_credential_device(credential_id):
+        if (subentry := self.async_credential_subentry(credential_id)) is not None:
+            # Removing the subentry takes its device and entities with it.
+            self.hass.config_entries.async_remove_subentry(
+                self.entry, subentry.subentry_id
+            )
+        elif device := self._async_credential_device(credential_id):
             dr.async_get(self.hass).async_remove_device(device.id)
 
-        self.store.async_schedule_save()
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
 
     @callback
@@ -815,7 +949,7 @@ class HyperPasscodeCoordinator:
     ) -> int:
         """Revoke every matching credential. Returns how many were affected."""
         revoked = 0
-        for credential in list(self.data.credentials.values()):
+        for credential in list(self._credentials.values()):
             if credential.revoked:
                 continue
             if scope_id is not None and credential.grant_for(scope_id) is None:
@@ -824,13 +958,13 @@ class HyperPasscodeCoordinator:
                 continue
             credential.revoked = True
             credential.updated_at = dt_util.utcnow()
+            self.async_save_credential(credential)
             revoked += 1
             async_dispatcher_send(
                 self.hass, SIGNAL_CREDENTIAL_UPDATED.format(credential.credential_id)
             )
 
         if revoked:
-            self.store.async_schedule_save()
             async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
         return revoked
 
@@ -898,9 +1032,11 @@ class HyperPasscodeCoordinator:
         self._runtime.pop(scope_id, None)
         async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
 
-        for credential in self.data.credentials.values():
+        for credential in self._credentials.values():
+            if credential.grant_for(scope_id) is None:
+                continue
             credential.grants = [g for g in credential.grants if g.scope_id != scope_id]
-        self.store.async_schedule_save()
+            self.async_save_credential(credential)
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
 
     @callback
@@ -923,18 +1059,16 @@ class HyperPasscodeCoordinator:
         """Every credential granted on a scope."""
         return [
             credential
-            for credential in self.data.credentials.values()
+            for credential in self._credentials.values()
             if credential.grant_for(scope_id) is not None
         ]
 
     def is_currently_valid(self, credential_id: str, scope_id: str) -> bool:
         """Whether a credential would be accepted on a scope right now."""
-        credential = self.data.credentials.get(credential_id)
+        credential = self._credentials.get(credential_id)
         if credential is None:
             return False
         return (
-            evaluate(
-                self.hass, credential, scope_id, Source.UNKNOWN, dt_util.utcnow()
-            )
+            evaluate(self.hass, credential, scope_id, Source.UNKNOWN, dt_util.utcnow())
             is None
         )

@@ -6,8 +6,6 @@ rather than something prefixed with a shared device name. It also means deleting
 either one can simply remove its device and let the removal cascade to its entities.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable, Iterable
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,10 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.entity_platform import (
-    AddConfigEntryEntitiesCallback,
-    AddEntitiesCallback,
-)
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN, credential_device_identifier
 from .coordinator import (
@@ -75,7 +70,7 @@ def async_add_credential_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
     coordinator: HyperPasscodeCoordinator,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
     factories: Iterable[CredentialEntityFactory],
 ) -> None:
     """Create entities for every credential, and for credentials added later.
@@ -91,14 +86,19 @@ def async_add_credential_entities(
 
     @callback
     def _refresh() -> None:
-        new: list[Entity] = []
         for credential_id, credential in coordinator.credentials.items():
             if credential_id in known:
                 continue
+            # A credential added through the dialog has a subentry id Home Assistant
+            # chose, which is not its credential id, so it has to be looked up.
+            subentry_id = coordinator.async_credential_subentry_id(credential_id)
+            if subentry_id is None:
+                continue
             known.add(credential_id)
-            new.extend(build(coordinator, credential) for build in builders)
-        if new:
-            async_add_entities(new)
+            async_add_entities(
+                [build(coordinator, credential) for build in builders],
+                config_subentry_id=subentry_id,
+            )
 
     _refresh()
     entry.async_on_unload(

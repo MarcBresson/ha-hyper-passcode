@@ -1,7 +1,5 @@
 """Persistence: serialisation round trips, schema loading and time normalisation."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigSubentryData
@@ -14,6 +12,7 @@ from custom_components.hyper_passcode.const import (
     DOMAIN,
     MAX_RECENT_USES,
     STORAGE_KEY,
+    SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
     CodeType,
     Outcome,
@@ -29,36 +28,17 @@ from custom_components.hyper_passcode.store import StoredData
 
 WHEN = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 
-#: A complete payload in the current (version 1) schema. Future migrations are tested
-#: by adding their own fixture alongside this one. Scopes are deliberately absent:
-#: they are config subentries, not store content.
+#: What the private store holds in the current (version 1) schema: the key, each
+#: credential's secret half, and the audit log. The configuration half of a
+#: credential lives in its config subentry, so none of it appears here.
 V1_FIXTURE = {
     "key": "a" * 64,
-    "credentials": {
+    "secrets": {
         "cred-1": {
-            "credential_id": "cred-1",
-            "label": "Cleaner",
             "lookup_index": "b" * 64,
-            "code_type": "pin",
             "plaintext": None,
-            "keep_viewable": False,
             "enabled": True,
             "revoked": False,
-            "owner": "person.alex",
-            "tags": ["staff"],
-            "notes": "Tuesdays",
-            "policy": {
-                "valid_from": "2026-09-01T00:00:00+00:00",
-                "valid_until": "2026-12-01T00:00:00+00:00",
-                "schedule_entities": ["schedule.cleaner"],
-                "condition_entities": [],
-                "max_uses": 50,
-                "uses_per_hour": None,
-                "uses_per_day": 2,
-                "cooldown_seconds": 30,
-                "allowed_sources": ["keypad"],
-            },
-            "grants": [{"scope_id": "scope-1", "policy": None, "actions": None}],
             "use_count": 7,
             "last_used": "2026-09-19T08:30:00+00:00",
             "recent_uses": ["2026-09-19T08:30:00+00:00"],
@@ -81,24 +61,73 @@ V1_FIXTURE = {
     ],
 }
 
+#: The matching subentry payload, as the credential dialog would store it.
+CREDENTIAL_CONFIG = {
+    "credential_id": "cred-1",
+    "code_type": "pin",
+    "keep_viewable": False,
+    "owner": "person.alex",
+    "tags": ["staff"],
+    "notes": "Tuesdays",
+    "policy": {
+        "valid_from": "2026-09-01T00:00:00+00:00",
+        "valid_until": "2026-12-01T00:00:00+00:00",
+        "schedule_entities": ["schedule.cleaner"],
+        "condition_entities": [],
+        "max_uses": 50,
+        "uses_per_hour": None,
+        "uses_per_day": 2,
+        "cooldown_seconds": 30,
+        "allowed_sources": ["keypad"],
+    },
+    "grants": [{"scope_id": "scope-1", "policy": None, "actions": None}],
+}
+
 
 def test_v1_payload_loads_completely():
     data = StoredData.from_dict(V1_FIXTURE)
 
     assert data.key == "a" * 64
+    assert data.secrets["cred-1"]["use_count"] == 7
+    assert data.audit[0].outcome is Outcome.VALID
+    assert data.audit[0].label == "Cleaner"
 
-    credential = data.credentials["cred-1"]
+
+def test_a_credential_is_assembled_from_both_halves():
+    data = StoredData.from_dict(V1_FIXTURE)
+    credential = Credential.assemble(
+        "Cleaner", CREDENTIAL_CONFIG, data.secrets["cred-1"]
+    )
+
+    # Configuration comes from the subentry...
     assert credential.label == "Cleaner"
     assert credential.code_type is CodeType.PIN
     assert credential.owner == "person.alex"
-    assert credential.use_count == 7
     assert credential.policy.max_uses == 50
-    assert credential.policy.uses_per_day == 2
     assert credential.policy.schedule_entities == ["schedule.cleaner"]
     assert credential.grants[0].scope_id == "scope-1"
+    # ...and the secret and counters from the private store.
+    assert credential.lookup_index == "b" * 64
+    assert credential.use_count == 7
 
-    assert data.audit[0].outcome is Outcome.VALID
-    assert data.audit[0].label == "Cleaner"
+    # The two halves round trip back to what they came from.
+    assert credential.config_dict() == CREDENTIAL_CONFIG
+    assert credential.secret_dict() == V1_FIXTURE["secrets"]["cred-1"]
+
+
+def test_no_code_ever_reaches_the_config_half():
+    credential = Credential(
+        credential_id="c",
+        label="Guest",
+        lookup_index="deadbeef",
+        plaintext="495162",
+        keep_viewable=True,
+    )
+    config = credential.config_dict()
+
+    assert "495162" not in str(config)
+    assert "lookup_index" not in config
+    assert "plaintext" not in config
 
 
 def test_round_trip_is_lossless():
@@ -109,22 +138,16 @@ def test_round_trip_is_lossless():
 
 
 def test_a_sparse_payload_gets_sensible_defaults():
-    data = StoredData.from_dict(
-        {
-            "key": "c" * 64,
-            "credentials": {
-                "cred-2": {"credential_id": "cred-2", "lookup_index": "d" * 64}
-            },
-        }
-    )
+    data = StoredData.from_dict({"key": "c" * 64})
+    credential = Credential.assemble("New", {"credential_id": "cred-2"}, {})
 
-    credential = data.credentials["cred-2"]
+    assert data.secrets == {}
+    assert data.audit == []
     assert credential.enabled is True
     assert credential.revoked is False
     assert credential.tags == []
     assert credential.grants == []
     assert credential.policy.max_uses is None
-    assert data.audit == []
 
 
 def test_a_payload_without_a_key_gets_a_fresh_one():
@@ -207,7 +230,13 @@ async def test_the_integration_loads_from_both_stores(
                 subentry_type=SUBENTRY_TYPE_SCOPE,
                 title="Front Door",
                 unique_id=None,
-            )
+            ),
+            ConfigSubentryData(
+                data=CREDENTIAL_CONFIG,
+                subentry_type=SUBENTRY_TYPE_CREDENTIAL,
+                title="Cleaner",
+                unique_id=None,
+            ),
         ],
     )
     entry.add_to_hass(hass)
@@ -215,7 +244,10 @@ async def test_the_integration_loads_from_both_stores(
     await hass.async_block_till_done()
 
     coordinator = entry.runtime_data
-    assert coordinator.credentials["cred-1"].label == "Cleaner"
+    credential = coordinator.credentials["cred-1"]
+    assert credential.label == "Cleaner"
+    assert credential.use_count == 7
+    assert credential.lookup_index == "b" * 64
 
     (scope,) = coordinator.scopes.values()
     assert scope.name == "Front Door"

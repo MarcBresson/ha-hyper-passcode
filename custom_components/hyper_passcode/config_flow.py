@@ -5,8 +5,6 @@ rather than through the config flow. The options flow carries the integration-le
 settings described in the README.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import Any
 
@@ -23,10 +21,16 @@ from homeassistant.const import CONF_ICON, CONF_NAME
 from homeassistant.helpers.selector import (
     ActionSelector,
     BooleanSelector,
+    DateTimeSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     IconSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
     TextSelector,
     TextSelectorConfig,
 )
@@ -51,14 +55,28 @@ from .const import (
     DEFAULT_TERMINATOR_KEYS,
     DEFAULT_WEAK_CODE_BLOCKLIST,
     DOMAIN,
+    SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
 )
-from .models import Scope
+from .exceptions import CodeCollisionError, WeakCodeError
+from .helpers import to_utc as _to_utc
+from .models import Policy, Scope
 
 ATTR_DEFAULT_ACTIONS = "default_actions"
 ATTR_CODE_LENGTH = "code_length"
 ATTR_TERMINATOR_KEYS = "terminator_keys"
 ATTR_INTER_KEY_TIMEOUT = "inter_key_timeout"
+ATTR_CODE = "code"
+ATTR_SCOPE_IDS = "scope_ids"
+ATTR_KEEP_VIEWABLE = "keep_viewable"
+ATTR_OWNER = "owner"
+ATTR_TAGS = "tags"
+ATTR_NOTES = "notes"
+ATTR_VALID_FROM = "valid_from"
+ATTR_VALID_UNTIL = "valid_until"
+ATTR_MAX_USES = "max_uses"
+ATTR_SCHEDULE_ENTITIES = "schedule_entities"
+ATTR_CONDITION_ENTITIES = "condition_entities"
 
 TITLE = "HyperPasscode"
 
@@ -96,10 +114,13 @@ class HyperPasscodeConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Declare scopes as a subentry type.
 
-        This is what puts an "Add scope" button on the integration page, and gives
-        each scope its own configure dialog and delete option.
+        This is what puts "Add scope" and "Add code" buttons on the integration page,
+        and gives each of them its own configure dialog and delete option.
         """
-        return {SUBENTRY_TYPE_SCOPE: ScopeSubentryFlow}
+        return {
+            SUBENTRY_TYPE_SCOPE: ScopeSubentryFlow,
+            SUBENTRY_TYPE_CREDENTIAL: CredentialSubentryFlow,
+        }
 
 
 class HyperPasscodeOptionsFlow(OptionsFlow):
@@ -270,4 +291,213 @@ class ScopeSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_scope_schema({**subentry.data, CONF_NAME: subentry.title}),
+        )
+
+
+def _credential_schema(
+    scope_options: list[SelectOptionDict],
+    current: Mapping[str, Any] | None = None,
+    *,
+    editing: bool = False,
+) -> vol.Schema:
+    """Build the add/edit form for one credential.
+
+    When editing, the code field is left blank and means "leave the code alone" --
+    a code that is not viewable cannot be shown back, so there is nothing to
+    pre-fill it with.
+    """
+    _ = editing  # the step id already tells the UI which wording to use
+    current = current or {}
+    policy = dict(current.get("policy") or {})
+
+    def default(value: Any) -> Any:
+        return vol.UNDEFINED if value is None else value
+
+    schema: dict[Any, Any] = {
+        vol.Required(
+            CONF_NAME, default=default(current.get(CONF_NAME))
+        ): TextSelector(),
+        # Left blank on add it is generated, and on edit the existing code is kept.
+        vol.Optional(ATTR_CODE): TextSelector(),
+        vol.Optional(
+            ATTR_SCOPE_IDS, default=current.get(ATTR_SCOPE_IDS) or []
+        ): SelectSelector(SelectSelectorConfig(options=scope_options, multiple=True)),
+        vol.Optional(
+            ATTR_KEEP_VIEWABLE, default=current.get(ATTR_KEEP_VIEWABLE, False)
+        ): BooleanSelector(),
+        vol.Optional(ATTR_OWNER, default=default(current.get(ATTR_OWNER))): (
+            EntitySelector(EntitySelectorConfig(domain="person"))
+        ),
+        vol.Optional(ATTR_TAGS, default=current.get(ATTR_TAGS) or []): TextSelector(
+            TextSelectorConfig(multiple=True)
+        ),
+        vol.Optional(ATTR_NOTES, default=current.get(ATTR_NOTES) or ""): TextSelector(
+            TextSelectorConfig(multiline=True)
+        ),
+        vol.Optional(
+            ATTR_VALID_FROM, default=default(policy.get(ATTR_VALID_FROM))
+        ): DateTimeSelector(),
+        vol.Optional(
+            ATTR_VALID_UNTIL, default=default(policy.get(ATTR_VALID_UNTIL))
+        ): DateTimeSelector(),
+        vol.Optional(ATTR_MAX_USES, default=default(policy.get(ATTR_MAX_USES))): _count(
+            1, 100000
+        ),
+        vol.Optional(
+            ATTR_SCHEDULE_ENTITIES, default=policy.get(ATTR_SCHEDULE_ENTITIES) or []
+        ): EntitySelector(EntitySelectorConfig(domain="schedule", multiple=True)),
+        vol.Optional(
+            ATTR_CONDITION_ENTITIES, default=policy.get(ATTR_CONDITION_ENTITIES) or []
+        ): EntitySelector(
+            EntitySelectorConfig(
+                domain=["binary_sensor", "switch", "input_boolean", "calendar"],
+                multiple=True,
+            )
+        ),
+    }
+    return vol.Schema(schema)
+
+
+class CredentialSubentryFlow(ConfigSubentryFlow):
+    """Add and edit codes from the integration page."""
+
+    #: Held between the two add steps, so the code can be shown before it is committed.
+    _credential: Any = None
+    _code: str = ""
+
+    def _scope_options(self) -> list[SelectOptionDict]:
+        """List the scopes a code can be granted on."""
+        return [
+            SelectOptionDict(value=subentry_id, label=subentry.title)
+            for subentry_id, subentry in self._get_entry().subentries.items()
+            if subentry.subentry_type == SUBENTRY_TYPE_SCOPE
+        ]
+
+    def _coordinator(self) -> Any:
+        """Return the loaded coordinator behind this entry."""
+        return self._get_entry().runtime_data
+
+    @staticmethod
+    def _policy(user_input: Mapping[str, Any]) -> Policy:
+        """Build a policy from the flat form fields."""
+        return Policy(
+            valid_from=_to_utc(user_input.get(ATTR_VALID_FROM)),
+            valid_until=_to_utc(user_input.get(ATTR_VALID_UNTIL)),
+            schedule_entities=list(user_input.get(ATTR_SCHEDULE_ENTITIES) or []),
+            condition_entities=list(user_input.get(ATTR_CONDITION_ENTITIES) or []),
+            max_uses=(
+                int(user_input[ATTR_MAX_USES])
+                if user_input.get(ATTR_MAX_USES) is not None
+                else None
+            ),
+        )
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect the details for a new code."""
+        errors: dict[str, str] = {}
+        coordinator = self._coordinator()
+
+        if user_input is not None:
+            try:
+                credential, code = await coordinator.async_create_credential(
+                    label=user_input[CONF_NAME],
+                    code=user_input.get(ATTR_CODE) or None,
+                    scope_ids=list(user_input.get(ATTR_SCOPE_IDS) or []),
+                    keep_viewable=user_input.get(ATTR_KEEP_VIEWABLE, False),
+                    owner=user_input.get(ATTR_OWNER),
+                    tags=list(user_input.get(ATTR_TAGS) or []),
+                    notes=user_input.get(ATTR_NOTES, ""),
+                    policy=self._policy(user_input),
+                    persist=False,
+                )
+            except CodeCollisionError:
+                errors["base"] = "code_collision"
+            except WeakCodeError:
+                errors["base"] = "weak_code"
+            else:
+                self._credential = credential
+                self._code = code
+                return await self.async_step_created()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=_credential_schema(self._scope_options(), user_input),
+            errors=errors,
+        )
+
+    async def async_step_created(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Show the code once, then commit it.
+
+        A code that is not kept viewable can never be shown again, so this step
+        exists to give the user their one chance to write it down.
+        """
+        if user_input is None:
+            return self.async_show_form(
+                step_id="created",
+                data_schema=vol.Schema({}),
+                description_placeholders={
+                    "code": self._code,
+                    "label": self._credential.label,
+                },
+            )
+
+        self._coordinator().async_stash_secret(self._credential)
+        return self.async_create_entry(
+            title=self._credential.label, data=self._credential.config_dict()
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit an existing code."""
+        subentry = self._get_reconfigure_subentry()
+        coordinator = self._coordinator()
+        credential_id = subentry.data["credential_id"]
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            changes: dict[str, Any] = {
+                "label": user_input[CONF_NAME],
+                "scope_ids": list(user_input.get(ATTR_SCOPE_IDS) or []),
+                ATTR_KEEP_VIEWABLE: user_input.get(ATTR_KEEP_VIEWABLE, False),
+                ATTR_OWNER: user_input.get(ATTR_OWNER),
+                ATTR_TAGS: list(user_input.get(ATTR_TAGS) or []),
+                ATTR_NOTES: user_input.get(ATTR_NOTES, ""),
+                "policy": self._policy(user_input).to_dict(),
+            }
+            if new_code := user_input.get(ATTR_CODE):
+                changes["code"] = new_code
+
+            try:
+                credential = await coordinator.async_update_credential(
+                    credential_id, changes
+                )
+            except CodeCollisionError:
+                errors["base"] = "code_collision"
+            except WeakCodeError:
+                errors["base"] = "weak_code"
+            else:
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    subentry,
+                    title=credential.label,
+                    data=credential.config_dict(),
+                )
+
+        credential = coordinator.credentials[credential_id]
+        current = {
+            **credential.config_dict(),
+            CONF_NAME: credential.label,
+            ATTR_SCOPE_IDS: [g.scope_id for g in credential.grants],
+        }
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_credential_schema(
+                self._scope_options(), current, editing=True
+            ),
+            errors=errors,
         )

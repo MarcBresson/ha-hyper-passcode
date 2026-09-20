@@ -4,9 +4,7 @@ Deliberately free of Home Assistant imports so the model and its serialisation s
 unit-testable on their own.
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
@@ -165,6 +163,16 @@ class Credential:
             return grant.policy
         return self.policy
 
+    def update_from(self, other: Credential) -> None:
+        """Copy every field from ``other`` onto this instance.
+
+        Used when a credential is re-read after its subentry changed. Mutating in
+        place rather than replacing the object keeps references held elsewhere --
+        by a running flow, or by a caller mid-operation -- pointing at live data.
+        """
+        for field_ in fields(self):
+            setattr(self, field_.name, getattr(other, field_.name))
+
     def record_use(self, when: datetime) -> None:
         """Record a successful use, trimming the rate-limiting window."""
         self.use_count += 1
@@ -173,27 +181,79 @@ class Credential:
         if len(self.recent_uses) > MAX_RECENT_USES:
             del self.recent_uses[:-MAX_RECENT_USES]
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise for the store."""
+    def config_dict(self) -> dict[str, Any]:
+        """Return the half that lives in the credential's config subentry.
+
+        Configuration only: what the user typed into the dialog. Nothing secret and
+        nothing that changes on its own, so editing a code does not churn through
+        Home Assistant's config entry file.
+        """
         return {
             "credential_id": self.credential_id,
-            "label": self.label,
-            "lookup_index": self.lookup_index,
             "code_type": str(self.code_type),
-            "plaintext": self.plaintext,
             "keep_viewable": self.keep_viewable,
-            "enabled": self.enabled,
-            "revoked": self.revoked,
             "owner": self.owner,
             "tags": list(self.tags),
             "notes": self.notes,
             "policy": self.policy.to_dict(),
             "grants": [g.to_dict() for g in self.grants],
+        }
+
+    def secret_dict(self) -> dict[str, Any]:
+        """Return the half that stays in the private store.
+
+        The lookup index, any plaintext the user asked to keep viewable, and the
+        counters that change on every use. These would otherwise end up in
+        ``core.config_entries``, which is not written with restricted permissions.
+        """
+        return {
+            "lookup_index": self.lookup_index,
+            "plaintext": self.plaintext,
+            "enabled": self.enabled,
+            "revoked": self.revoked,
             "use_count": self.use_count,
             "last_used": _dt_to_str(self.last_used),
             "recent_uses": [_dt_to_str(d) for d in self.recent_uses],
             "created_at": _dt_to_str(self.created_at),
             "updated_at": _dt_to_str(self.updated_at),
+        }
+
+    @classmethod
+    def assemble(
+        cls, label: str, config: dict[str, Any], secret: dict[str, Any]
+    ) -> Credential:
+        """Rebuild a credential from its subentry and its stored secret."""
+        return cls(
+            credential_id=config["credential_id"],
+            label=label,
+            lookup_index=secret.get("lookup_index", ""),
+            code_type=CodeType(config.get("code_type", CodeType.PIN)),
+            plaintext=secret.get("plaintext"),
+            keep_viewable=config.get("keep_viewable", False),
+            enabled=secret.get("enabled", True),
+            revoked=secret.get("revoked", False),
+            owner=config.get("owner"),
+            tags=list(config.get("tags") or []),
+            notes=config.get("notes", ""),
+            policy=Policy.from_dict(config.get("policy") or {}),
+            grants=[Grant.from_dict(g) for g in config.get("grants") or []],
+            use_count=secret.get("use_count", 0),
+            last_used=_dt_from_str(secret.get("last_used")),
+            recent_uses=[
+                parsed
+                for raw in secret.get("recent_uses") or []
+                if (parsed := _dt_from_str(raw)) is not None
+            ],
+            created_at=_dt_from_str(secret.get("created_at")),
+            updated_at=_dt_from_str(secret.get("updated_at")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise the whole credential, for diagnostics and exports."""
+        return {
+            **self.config_dict(),
+            **self.secret_dict(),
+            "label": self.label,
         }
 
     @classmethod

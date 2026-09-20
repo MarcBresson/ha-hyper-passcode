@@ -4,8 +4,6 @@ Codes live in Home Assistant rather than inside a lock, so one policy engine can
 govern any credential, from any input surface, authorising any action.
 """
 
-from __future__ import annotations
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -69,4 +67,4 @@ async def _async_entry_updated(
     if coordinator.async_options_changed():
         await hass.config_entries.async_reload(entry.entry_id)
         return
-    coordinator.async_sync_scopes()
+    coordinator.async_sync_subentries()

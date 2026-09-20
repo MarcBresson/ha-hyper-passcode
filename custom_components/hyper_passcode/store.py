@@ -8,8 +8,6 @@ The store file is written ``private`` (mode 0600) and atomically, because it hol
 door codes.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,7 +17,7 @@ from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
 from .crypto import generate_integration_key
-from .models import AuditEntry, Credential
+from .models import AuditEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,16 +33,19 @@ class StoredData:
     standard Home Assistant UI edits one source of truth rather than two:
 
     - integration-level *settings* are the entry's options
-    - *scopes* are config subentries, which is what gives them an "Add scope" button
-      and a per-scope configure dialog
+    - *scopes* and the configuration half of *credentials* are config subentries,
+      which is what gives them "Add" buttons and per-item configure dialogs
 
-    What is left here is data rather than configuration: the lookup key, the
-    credentials, and the audit log.
+    What is left here is data rather than configuration, and it is the half that has
+    to stay private: the lookup key, each credential's secret and counters, and the
+    audit log. Config entries are not written with restricted permissions, so no
+    code ever goes in one.
     """
 
     #: Random key backing every credential's lookup index. Generated once.
     key: str
-    credentials: dict[str, Credential] = field(default_factory=dict)
+    #: Keyed by credential id. See ``Credential.secret_dict``.
+    secrets: dict[str, dict[str, Any]] = field(default_factory=dict)
     audit: list[AuditEntry] = field(default_factory=list)
 
     @classmethod
@@ -56,7 +57,7 @@ class StoredData:
         """Serialise for the store."""
         return {
             "key": self.key,
-            "credentials": {k: v.to_dict() for k, v in self.credentials.items()},
+            "secrets": self.secrets,
             "audit": [entry.to_dict() for entry in self.audit],
         }
 
@@ -65,10 +66,7 @@ class StoredData:
         """Rebuild from the store."""
         return cls(
             key=data.get("key") or generate_integration_key(),
-            credentials={
-                k: Credential.from_dict(v)
-                for k, v in (data.get("credentials") or {}).items()
-            },
+            secrets=dict(data.get("secrets") or {}),
             audit=[AuditEntry.from_dict(e) for e in data.get("audit") or []],
         )
 

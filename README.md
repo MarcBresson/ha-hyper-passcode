@@ -109,7 +109,17 @@ data:
 
 Note the returned `scope_id`, which the remaining steps need.
 
-### 2. Create a code
+### 2. Add a code
+
+Press **Add code** on the same page. Give it a name, pick which scopes it opens, and leave
+the code blank to have one generated. The next step shows you the code — that is the only
+time you see it, unless you tick "Keep code viewable".
+
+The same dialog carries the validity rules: a start and end time, a maximum number of uses,
+schedules and conditions. Codes can be edited or deleted from the integration page, and
+editing one never touches its use count or history.
+
+As an action:
 
 ```yaml
 action: hyper_passcode.create_code
@@ -240,6 +250,14 @@ fill them in to give one door a stricter threshold than the rest of the house.
 Collision refusal isn't configurable. Two identical active codes in one scope would make the
 audit log unattributable, which defeats the point of the monitoring.
 
+## How things are stored
+
+Scopes and codes are Home Assistant config subentries, which is what gives them the
+Add and Edit buttons. Only their *configuration* lives there. Config entries are not
+written with restricted permissions, so the code itself never goes in one: the lookup
+index, any viewable copy, and the use counters live in the integration's own store,
+which is written private and atomically.
+
 ## Security
 
 Codes are stored as `HMAC-SHA256(code, key)` lookup indexes, with a key generated once at
@@ -265,8 +283,9 @@ The engine is done and tested. What's left is mostly what sits on top of it.
 Planned
 
 - A Lovelace keypad card, kiosk-friendly, with no code echoed back on screen
-- A management card for creating and editing codes without going through Developer Tools
-- A WebSocket API behind both cards, admin-only
+- A management card, mainly for a readable audit view and bulk operations; scopes and
+  codes themselves are already managed from the integration page
+- A WebSocket API behind the cards, admin-only
 - Blueprints for the common wiring: keypad to `submit_key`, code used to a notification with
   a camera snapshot, repeated failures to arming the alarm
 - Diagnostics download, and repair issues for things like a code about to expire

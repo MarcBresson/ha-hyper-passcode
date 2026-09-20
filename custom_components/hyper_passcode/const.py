@@ -1,7 +1,5 @@
 """Constants for the HyperPasscode integration."""
 
-from __future__ import annotations
-
 from enum import StrEnum
 from typing import Final
 
@@ -10,9 +8,10 @@ DOMAIN: Final = "hyper_passcode"
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
 
-#: Scopes are config subentries, which is what gives them an "Add scope" button
-#: on the integration page and a configure dialog of their own.
+#: Scopes and credentials are config subentries, which is what gives them "Add"
+#: buttons on the integration page and configure dialogs of their own.
 SUBENTRY_TYPE_SCOPE: Final = "scope"
+SUBENTRY_TYPE_CREDENTIAL: Final = "credential"
 
 #: Credential device identifiers are prefixed so they can never be confused with a
 #: scope's, whatever ids happen to be generated.
@@ -22,6 +21,7 @@ CREDENTIAL_DEVICE_PREFIX: Final = "credential"
 def credential_device_identifier(credential_id: str) -> tuple[str, str]:
     """Return the device registry identifier for a credential."""
     return (DOMAIN, f"{CREDENTIAL_DEVICE_PREFIX}_{credential_id}")
+
 
 # Integration-level settings and their defaults.
 CONF_REJECT_WEAK_CODES: Final = "reject_weak_codes"
