@@ -1,0 +1,343 @@
+submit:
+  fields:
+    scope_id:
+      required: true
+      example: 9f2c1b7e4a6d4c0f8b3e5a7d9c1f2e40
+      selector:
+        text:
+    code:
+      required: true
+      example: "495162"
+      selector:
+        text:
+    source:
+      default: service
+      selector:
+        select:
+          custom_value: true
+          options: [ui, keypad, service, webhook, unknown]
+
+submit_key:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:
+    key:
+      required: true
+      example: "7"
+      selector:
+        text:
+    source:
+      default: keypad
+      selector:
+        select:
+          custom_value: true
+          options: [ui, keypad, service, webhook, unknown]
+
+clear_buffer:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:
+
+test_code:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:
+    code:
+      required: true
+      selector:
+        text:
+    source:
+      default: service
+      selector:
+        select:
+          custom_value: true
+          options: [ui, keypad, service, webhook, unknown]
+
+create_code:
+  fields:
+    label:
+      required: true
+      example: Cleaner
+      selector:
+        text:
+    code:
+      example: "495162"
+      selector:
+        text:
+    scope_ids:
+      selector:
+        text:
+          multiple: true
+    length:
+      selector:
+        number:
+          min: 1
+          max: 64
+          mode: box
+    code_type:
+      default: pin
+      selector:
+        select:
+          options: [pin, alphanumeric]
+    keep_viewable:
+      default: false
+      selector:
+        boolean:
+    owner:
+      selector:
+        entity:
+          filter:
+            domain: person
+    tags:
+      selector:
+        text:
+          multiple: true
+    notes:
+      selector:
+        text:
+          multiline: true
+    valid_from:
+      selector:
+        datetime:
+    valid_until:
+      selector:
+        datetime:
+    schedule_entities:
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: schedule
+    condition_entities:
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: [binary_sensor, switch, input_boolean, calendar, schedule]
+    max_uses:
+      selector:
+        number:
+          min: 1
+          max: 100000
+          mode: box
+    uses_per_hour:
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    uses_per_day:
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    cooldown_seconds:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          mode: box
+    allowed_sources:
+      selector:
+        select:
+          multiple: true
+          custom_value: true
+          options: [ui, keypad, service, webhook, unknown]
+
+create_otp:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:
+    label:
+      default: One-time code
+      selector:
+        text:
+    valid_from:
+      selector:
+        datetime:
+    valid_until:
+      selector:
+        datetime:
+    duration:
+      example: "02:00:00"
+      selector:
+        duration:
+    max_uses:
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    length:
+      selector:
+        number:
+          min: 1
+          max: 64
+          mode: box
+    keep_viewable:
+      default: true
+      selector:
+        boolean:
+
+revoke:
+  fields:
+    credential_id:
+      required: true
+      selector:
+        text:
+
+delete_code:
+  fields:
+    credential_id:
+      required: true
+      selector:
+        text:
+
+set_enabled:
+  fields:
+    credential_id:
+      required: true
+      selector:
+        text:
+    enabled:
+      required: true
+      selector:
+        boolean:
+
+revoke_all:
+  fields:
+    scope_id:
+      selector:
+        text:
+    tags:
+      example: guest
+      selector:
+        text:
+          multiple: true
+
+export_audit:
+  fields:
+    format:
+      default: json
+      selector:
+        select:
+          options: [json, csv]
+    scope_id:
+      selector:
+        text:
+    limit:
+      selector:
+        number:
+          min: 1
+          max: 100000
+          mode: box
+
+create_scope:
+  fields:
+    name:
+      required: true
+      example: Front Door
+      selector:
+        text:
+    icon:
+      default: mdi:dialpad
+      selector:
+        icon:
+    default_actions:
+      selector:
+        action:
+    code_length:
+      selector:
+        number:
+          min: 1
+          max: 64
+          mode: box
+    terminator_keys:
+      selector:
+        text:
+          multiple: true
+    inter_key_timeout:
+      selector:
+        number:
+          min: 1
+          max: 300
+          step: 0.5
+          unit_of_measurement: s
+          mode: box
+    lockout_threshold:
+      selector:
+        number:
+          min: 0
+          max: 100
+          mode: box
+    lockout_duration:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+
+update_scope:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    icon:
+      selector:
+        icon:
+    default_actions:
+      selector:
+        action:
+    code_length:
+      selector:
+        number:
+          min: 1
+          max: 64
+          mode: box
+    terminator_keys:
+      selector:
+        text:
+          multiple: true
+    inter_key_timeout:
+      selector:
+        number:
+          min: 1
+          max: 300
+          step: 0.5
+          unit_of_measurement: s
+          mode: box
+    lockout_threshold:
+      selector:
+        number:
+          min: 0
+          max: 100
+          mode: box
+    lockout_duration:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+
+delete_scope:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:

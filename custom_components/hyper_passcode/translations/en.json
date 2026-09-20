@@ -1,0 +1,243 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HyperPasscode",
+        "description": "Codes live in Home Assistant rather than inside a lock, so one policy engine can govern any credential and authorise any action.\n\nThere is nothing to configure here. Add your first scope once setup finishes."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HyperPasscode is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HyperPasscode settings",
+        "data": {
+          "reject_weak_codes": "Reject weak codes",
+          "weak_code_blocklist": "Weak code blocklist",
+          "per_credential_entities": "Create entities per credential",
+          "default_code_length": "Default code length",
+          "lockout_threshold": "Failed attempts before lockout",
+          "lockout_duration": "Lockout duration (seconds)",
+          "audit_log_size": "Audit log size",
+          "log_failed_plaintext": "Log what was typed on failure"
+        },
+        "data_description": {
+          "reject_weak_codes": "Refuses repeated digits, sequential runs and well-known codes, for typed codes as well as generated ones.",
+          "weak_code_blocklist": "Extra values to treat as weak, such as a house number or a birth year.",
+          "per_credential_entities": "Gives every credential its own use counter and enable switch. Turn this off if you have many credentials, or the entity list becomes unusable.",
+          "lockout_threshold": "Set to 0 to disable lockout entirely.",
+          "audit_log_size": "How many submissions to keep. Every submission also fires an event, so history is kept by the recorder regardless.",
+          "log_failed_plaintext": "Off by default: a failed attempt is usually a typo of a real code, so recording it would leak that code into your logs."
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "valid_code": "Valid code entered",
+      "invalid_code": "Wrong code entered",
+      "expired_code": "Expired code entered",
+      "rate_limited": "Code refused for exceeding its rate limit",
+      "lockout": "Locked out after too many failures"
+    },
+    "condition_type": {
+      "is_locked_out": "is locked out",
+      "credential_valid": "a credential is currently valid"
+    },
+    "extra_fields": {
+      "credential_id": "Credential"
+    }
+  },
+  "entity": {
+    "event": {
+      "code": {
+        "name": "Code",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "valid": "Valid code entered",
+              "invalid": "Wrong code entered",
+              "expired": "Expired code entered",
+              "rate_limited": "Rate limited",
+              "lockout": "Locked out"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "last_used": { "name": "Last used" },
+      "failed_attempts": { "name": "Failed attempts" },
+      "uses": { "name": "Uses" }
+    },
+    "binary_sensor": {
+      "lockout": { "name": "Lockout" }
+    },
+    "switch": {
+      "enabled": { "name": "Enabled" }
+    },
+    "button": {
+      "generate_delivery_code": { "name": "Generate delivery code" }
+    }
+  },
+  "services": {
+    "submit": {
+      "name": "Submit code",
+      "description": "Validates a code against a scope and runs its actions if accepted.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope to validate against." },
+        "code": { "name": "Code", "description": "The code that was entered." },
+        "source": { "name": "Source", "description": "Where the code came from. Credentials can be restricted to particular sources." }
+      }
+    },
+    "submit_key": {
+      "name": "Submit keystroke",
+      "description": "Feeds one keystroke into a scope's buffer. Submits on a terminator key or at the scope's fixed code length, and clears itself after the inter-key timeout.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope being typed into." },
+        "key": { "name": "Key", "description": "The single key that was pressed." },
+        "source": { "name": "Source", "description": "Where the keystroke came from." }
+      }
+    },
+    "clear_buffer": {
+      "name": "Clear buffer",
+      "description": "Discards a partially entered code.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope whose buffer to clear." }
+      }
+    },
+    "test_code": {
+      "name": "Test code",
+      "description": "Reports whether a code would be accepted, and why not if it would be refused. Records nothing and runs no actions.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope to test against." },
+        "code": { "name": "Code", "description": "The code to test." },
+        "source": { "name": "Source", "description": "The source to test as." }
+      }
+    },
+    "create_code": {
+      "name": "Create code",
+      "description": "Creates a credential, generating a code when you do not supply one. The code is returned once.",
+      "fields": {
+        "label": { "name": "Label", "description": "A name for this credential, such as Cleaner." },
+        "code": { "name": "Code", "description": "Leave empty to generate one." },
+        "scope_ids": { "name": "Scopes", "description": "The scopes this code works on." },
+        "length": { "name": "Length", "description": "Length of a generated code." },
+        "code_type": { "name": "Code type", "description": "Digits only, or letters and digits." },
+        "keep_viewable": { "name": "Keep code viewable", "description": "Stores the code in clear so it can be read back later. Needed to re-share a code; otherwise the code can only be regenerated." },
+        "owner": { "name": "Owner", "description": "The person this credential belongs to." },
+        "tags": { "name": "Tags", "description": "Labels for filtering and bulk revocation." },
+        "notes": { "name": "Notes", "description": "Free text." },
+        "valid_from": { "name": "Valid from", "description": "Not usable before this moment." },
+        "valid_until": { "name": "Valid until", "description": "Not usable from this moment on." },
+        "schedule_entities": { "name": "Schedules", "description": "Schedule helpers that must all be on. These recur weekly, so pair them with valid from and valid until for a date range." },
+        "condition_entities": { "name": "Conditions", "description": "Any on/off entities that must all be on. Point one at a calendar to make a code valid only during matching events." },
+        "max_uses": { "name": "Maximum uses", "description": "Lifetime limit. Set to 1 for a one-time code." },
+        "uses_per_hour": { "name": "Uses per hour", "description": "Rolling hourly limit." },
+        "uses_per_day": { "name": "Uses per day", "description": "Rolling 24-hour limit." },
+        "cooldown_seconds": { "name": "Cooldown", "description": "Minimum gap between uses." },
+        "allowed_sources": { "name": "Allowed sources", "description": "Restricts where this code may be entered. Empty means anywhere." }
+      }
+    },
+    "create_otp": {
+      "name": "Create one-time code",
+      "description": "Creates a single-use, time-limited code and returns it. The quickest way to let a delivery driver in.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope the code works on." },
+        "label": { "name": "Label", "description": "A name for this code." },
+        "valid_from": { "name": "Valid from", "description": "Defaults to now. Set a future time for tomorrow's delivery." },
+        "valid_until": { "name": "Valid until", "description": "Overrides duration when both are given." },
+        "duration": { "name": "Duration", "description": "How long the code stays valid. Defaults to two hours." },
+        "max_uses": { "name": "Maximum uses", "description": "Defaults to a single use." },
+        "length": { "name": "Length", "description": "Length of the generated code." },
+        "keep_viewable": { "name": "Keep code viewable", "description": "On by default, since a delivery code you cannot read back is of no use." }
+      }
+    },
+    "revoke": {
+      "name": "Revoke code",
+      "description": "Permanently disables a credential. Unlike disabling, this cannot be undone.",
+      "fields": {
+        "credential_id": { "name": "Credential", "description": "The credential to revoke." }
+      }
+    },
+    "delete_code": {
+      "name": "Delete code",
+      "description": "Removes a credential and its entities outright.",
+      "fields": {
+        "credential_id": { "name": "Credential", "description": "The credential to delete." }
+      }
+    },
+    "set_enabled": {
+      "name": "Enable or disable code",
+      "description": "Temporarily turns a credential on or off.",
+      "fields": {
+        "credential_id": { "name": "Credential", "description": "The credential to change." },
+        "enabled": { "name": "Enabled", "description": "Whether the credential may be used." }
+      }
+    },
+    "revoke_all": {
+      "name": "Revoke all codes",
+      "description": "The panic wipe. Revokes every credential matching the filters, or all of them when no filter is given.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "Only revoke credentials granted on this scope." },
+        "tags": { "name": "Tags", "description": "Only revoke credentials carrying one of these tags, such as guest." }
+      }
+    },
+    "export_audit": {
+      "name": "Export audit log",
+      "description": "Returns the submission log, newest first.",
+      "fields": {
+        "format": { "name": "Format", "description": "JSON entries or a CSV document." },
+        "scope_id": { "name": "Scope", "description": "Limit to one scope." },
+        "limit": { "name": "Limit", "description": "Maximum number of entries." }
+      }
+    },
+    "create_scope": {
+      "name": "Create scope",
+      "description": "Adds a target that codes are entered against, such as a door, a gate or an alarm. Becomes a device carrying its own entities.",
+      "fields": {
+        "name": { "name": "Name", "description": "What this scope is called." },
+        "icon": { "name": "Icon", "description": "Icon for the scope's entities." },
+        "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered, so the common case needs no automation at all." },
+        "code_length": { "name": "Code length", "description": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key." },
+        "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer, typically # or *." },
+        "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long without a keystroke." },
+        "lockout_threshold": { "name": "Failed attempts before lockout", "description": "Overrides the integration setting for this scope." },
+        "lockout_duration": { "name": "Lockout duration", "description": "Overrides the integration setting for this scope." }
+      }
+    },
+    "update_scope": {
+      "name": "Update scope",
+      "description": "Changes a scope's configuration.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope to change." },
+        "name": { "name": "Name", "description": "What this scope is called." },
+        "icon": { "name": "Icon", "description": "Icon for the scope's entities." },
+        "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered." },
+        "code_length": { "name": "Code length", "description": "Submit automatically at this length." },
+        "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer." },
+        "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long." },
+        "lockout_threshold": { "name": "Failed attempts before lockout", "description": "Overrides the integration setting." },
+        "lockout_duration": { "name": "Lockout duration", "description": "Overrides the integration setting." }
+      }
+    },
+    "delete_scope": {
+      "name": "Delete scope",
+      "description": "Removes a scope, its device and every grant pointing at it.",
+      "fields": {
+        "scope_id": { "name": "Scope", "description": "The scope to delete." }
+      }
+    }
+  },
+  "exceptions": {
+    "code_collision": {
+      "message": "That code is already in use. Two identical codes would make the audit log unattributable."
+    },
+    "weak_code": {
+      "message": "That code was rejected as weak. Turn off 'Reject weak codes' in the integration settings to allow it."
+    }
+  }
+}

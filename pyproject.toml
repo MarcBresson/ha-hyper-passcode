@@ -1,0 +1,50 @@
+[project]
+name = "ha-hyper-passcode"
+version = "0.1.0"
+description = "HyperPasscode: a credential, policy and action broker for Home Assistant"
+requires-python = ">=3.14.2,<3.15"
+
+[tool.poetry]
+# The integration ships as a custom_components/ folder, not an installable package.
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+homeassistant = "^2026.9.3"
+pytest-homeassistant-custom-component = "^0.13.366"
+pytest = "^9.0.3"
+ruff = "^0.16.8"
+pyyaml = "^6.0.3"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+norecursedirs = [".git", ".venv"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "W",    # warnings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "D",    # pydocstyle
+    "ANN",  # annotations
+    "SIM",  # simplify
+    "RUF",
+]
+ignore = [
+    "D203",   # conflicts with D211
+    "D213",   # conflicts with D212
+    "ANN401", # Any is legitimate for service payloads
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D103", "D104", "D401", "ANN001", "ANN003", "ANN201", "ANN202"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
