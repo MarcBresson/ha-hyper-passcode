@@ -1,7 +1,5 @@
 """Tests for secret handling and code generation."""
 
-from __future__ import annotations
-
 import pytest
 
 from custom_components.hyper_passcode.const import CodeType
@@ -70,9 +68,7 @@ def test_generated_pin_respects_length_and_alphabet():
 
 def test_generation_avoids_excluded_characters_and_prefixes():
     for _ in range(50):
-        code = generate_code(
-            6, exclude_characters="0", forbidden_prefixes=["12", "99"]
-        )
+        code = generate_code(6, exclude_characters="0", forbidden_prefixes=["12", "99"])
         assert "0" not in code
         assert not code.startswith(("12", "99"))
 

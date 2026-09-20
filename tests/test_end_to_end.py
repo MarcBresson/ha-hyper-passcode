@@ -4,13 +4,12 @@ Everything else tests the coordinator directly; this exercises the layer a user
 actually touches -- schemas, defaults, response data -- against a real target entity.
 """
 
-from __future__ import annotations
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 
 from custom_components.hyper_passcode.const import DOMAIN, EventType, RejectionReason
+from tests.helpers import state_of
 
 TARGET = "input_boolean.door_relay"
 
@@ -57,8 +56,8 @@ async def test_delivery_code_walkthrough(hass: HomeAssistant, entry):
     uses = registry.async_get_entity_id(
         "sensor", DOMAIN, f"{otp['credential_id']}_uses"
     )
-    assert hass.states.get(last_used).state == "unknown"
-    assert hass.states.get(uses).state == "0"
+    assert state_of(hass, last_used).state == "unknown"
+    assert state_of(hass, uses).state == "0"
 
     # 3. Submitting it opens the door and records the use.
     result = await call(hass, "submit", {"scope_id": scope_id, "code": code})
@@ -66,13 +65,11 @@ async def test_delivery_code_walkthrough(hass: HomeAssistant, entry):
 
     assert result["valid"] is True
     assert result["label"] == "Grocery delivery"
-    assert hass.states.get(TARGET).state == "on"
-    assert hass.states.get(event_entity).attributes["event_type"] == str(
-        EventType.VALID
-    )
-    assert hass.states.get(last_used).state != "unknown"
-    assert hass.states.get(last_used).attributes["label"] == "Grocery delivery"
-    assert hass.states.get(uses).state == "1"
+    assert state_of(hass, TARGET).state == "on"
+    assert state_of(hass, event_entity).attributes["event_type"] == str(EventType.VALID)
+    assert state_of(hass, last_used).state != "unknown"
+    assert state_of(hass, last_used).attributes["label"] == "Grocery delivery"
+    assert state_of(hass, uses).state == "1"
 
     # 4. A second attempt is refused, and the door stays as it was.
     await hass.services.async_call(
@@ -83,8 +80,8 @@ async def test_delivery_code_walkthrough(hass: HomeAssistant, entry):
 
     assert again["valid"] is False
     assert again["reason"] == RejectionReason.MAX_USES_REACHED
-    assert hass.states.get(TARGET).state == "off"
-    assert hass.states.get(uses).state == "1"
+    assert state_of(hass, TARGET).state == "off"
+    assert state_of(hass, uses).state == "1"
 
 
 async def test_test_code_reports_without_acting(hass: HomeAssistant, entry):
@@ -113,7 +110,7 @@ async def test_test_code_reports_without_acting(hass: HomeAssistant, entry):
     )
 
     assert verdict["valid"] is True
-    assert hass.states.get(TARGET).state == "off"
+    assert state_of(hass, TARGET).state == "off"
 
     # Still usable afterwards, because the dry run counted for nothing.
     used = await call(hass, "submit", {"scope_id": scope_id, "code": created["code"]})
@@ -137,7 +134,7 @@ async def test_lockout_through_services(hass: HomeAssistant, entry):
         await call(hass, "submit", {"scope_id": scope_id, "code": "000111"})
     await hass.async_block_till_done()
 
-    assert hass.states.get(lockout).state == "on"
+    assert state_of(hass, lockout).state == "on"
     refused = await call(hass, "submit", {"scope_id": scope_id, "code": "000111"})
     assert refused["reason"] == RejectionReason.LOCKED_OUT
 

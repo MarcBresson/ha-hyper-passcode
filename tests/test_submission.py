@@ -1,7 +1,5 @@
 """Submission handling: validation, actions, limits, lockout and buffering."""
 
-from __future__ import annotations
-
 from datetime import timedelta
 
 import pytest
@@ -21,6 +19,7 @@ from custom_components.hyper_passcode.exceptions import (
     CodeCollisionError,
     WeakCodeError,
 )
+from tests.helpers import state_of
 
 ACTION_EVENT = "hyper_passcode_test_action"
 FIRE_ACTION = [{"event": ACTION_EVENT}]
@@ -172,11 +171,11 @@ async def test_event_entity_reports_the_outcome(
 
     await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
     await hass.async_block_till_done()
-    assert hass.states.get(entity_id).attributes["event_type"] == str(EventType.VALID)
+    assert state_of(hass, entity_id).attributes["event_type"] == str(EventType.VALID)
 
     await coordinator.async_submit(scope.scope_id, "999888", Source.KEYPAD)
     await hass.async_block_till_done()
-    state = hass.states.get(entity_id)
+    state = state_of(hass, entity_id)
     assert state.attributes["event_type"] == str(EventType.INVALID)
     assert state.attributes["reason"] == RejectionReason.UNKNOWN_CODE
 
@@ -202,14 +201,14 @@ async def test_lockout_trips_and_then_recovers(hass: HomeAssistant, entry, coord
     entity_id = er.async_get(hass).async_get_entity_id(
         "binary_sensor", DOMAIN, f"{scope.scope_id}_lockout"
     )
-    assert hass.states.get(entity_id).state == "off"
+    assert state_of(hass, entity_id).state == "off"
 
     for _ in range(3):
         await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
     await hass.async_block_till_done()
 
     assert coordinator.is_locked_out(scope.scope_id)
-    assert hass.states.get(entity_id).state == "on"
+    assert state_of(hass, entity_id).state == "on"
 
     # A correct code is refused while the lockout holds.
     _credential, code = await coordinator.async_create_credential(

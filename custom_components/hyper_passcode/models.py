@@ -325,6 +325,7 @@ class Scope:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Scope:
         """Rebuild from the store."""
+        terminator_keys = data.get("terminator_keys")
         return cls(
             scope_id=data["scope_id"],
             name=data.get("name", ""),
@@ -332,9 +333,7 @@ class Scope:
             default_actions=list(data.get("default_actions") or []),
             code_length=data.get("code_length"),
             terminator_keys=list(
-                data.get("terminator_keys")
-                if data.get("terminator_keys") is not None
-                else DEFAULT_TERMINATOR_KEYS
+                DEFAULT_TERMINATOR_KEYS if terminator_keys is None else terminator_keys
             ),
             inter_key_timeout=data.get("inter_key_timeout", DEFAULT_INTER_KEY_TIMEOUT),
             lockout_threshold=data.get("lockout_threshold"),

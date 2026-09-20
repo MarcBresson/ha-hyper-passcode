@@ -82,8 +82,10 @@ async def test_adding_a_scope_creates_its_entities(hass: HomeAssistant, entry):
             platform, DOMAIN, f"{scope_id}_{suffix}"
         )
         assert entity_id, f"{platform}.{suffix} was not created"
+        registered = registry.async_get(entity_id)
+        assert registered is not None
         # Entities belong to the subentry, so removing the scope removes them too.
-        assert registry.async_get(entity_id).config_subentry_id == scope_id
+        assert registered.config_subentry_id == scope_id
 
 
 async def test_scope_lockout_is_configured_per_scope(hass: HomeAssistant, entry):
@@ -197,7 +199,9 @@ async def add_code(hass: HomeAssistant, entry, **fields) -> tuple[str, str]:
     # The generated code is shown once before anything is committed.
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "created"
-    code = result["description_placeholders"]["code"]
+    placeholders = result["description_placeholders"]
+    assert placeholders is not None
+    code = placeholders["code"]
 
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
     await hass.async_block_till_done()
@@ -244,7 +248,9 @@ async def test_an_added_code_creates_its_entities(hass: HomeAssistant, entry):
             platform, DOMAIN, f"{credential_id}_{suffix}"
         )
         assert entity_id, f"{platform}.{suffix} was not created"
-        assert registry.async_get(entity_id).config_subentry_id == subentry_id
+        registered = registry.async_get(entity_id)
+        assert registered is not None
+        assert registered.config_subentry_id == subentry_id
 
 
 async def test_the_code_never_reaches_the_config_entry(hass: HomeAssistant, entry):

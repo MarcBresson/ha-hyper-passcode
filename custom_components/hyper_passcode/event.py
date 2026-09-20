@@ -6,10 +6,6 @@ wrong code from a real code that has expired or been rate limited, so automation
 respond differently to each.
 """
 
-from __future__ import annotations
-
-from typing import ClassVar
-
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -44,13 +40,13 @@ class ScopeCodeEventEntity(EventEntity, HyperPasscodeScopeEntity):
     """Fires whenever a code is submitted against this scope."""
 
     _attr_translation_key = "code"
-    _attr_event_types: ClassVar[list[str]] = [str(e) for e in EventType]
     _attr_icon = "mdi:dialpad"
 
     def __init__(self, coordinator: HyperPasscodeCoordinator, scope: Scope) -> None:
         """Set the entity's identity."""
         super().__init__(coordinator, scope)
         self._attr_unique_id = f"{scope.scope_id}_code"
+        self._attr_event_types = [str(e) for e in EventType]
 
     async def async_added_to_hass(self) -> None:
         """Listen for submissions on this scope."""

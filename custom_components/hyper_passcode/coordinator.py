@@ -7,6 +7,7 @@ place where a code is checked, a use is counted and an action is fired.
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
@@ -768,7 +769,7 @@ class HyperPasscodeCoordinator:
         self.hass.config_entries.async_add_subentry(
             self.entry,
             ConfigSubentry(
-                data=credential.config_dict(),
+                data=MappingProxyType(credential.config_dict()),
                 subentry_id=credential.credential_id,
                 subentry_type=SUBENTRY_TYPE_CREDENTIAL,
                 title=credential.label,
@@ -986,7 +987,7 @@ class HyperPasscodeCoordinator:
         self.hass.config_entries.async_add_subentry(
             self.entry,
             ConfigSubentry(
-                data=data,
+                data=MappingProxyType(data),
                 subentry_id=scope.scope_id,
                 subentry_type=SUBENTRY_TYPE_SCOPE,
                 title=name,

@@ -4,7 +4,8 @@ These are the whole of M1's interface: everything the management card will event
 do is reachable here from Developer Tools first.
 """
 
-from typing import Any
+from datetime import datetime
+from typing import Any, cast
 
 import voluptuous as vol
 from homeassistant.core import (
@@ -16,6 +17,7 @@ from homeassistant.core import (
 )
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util.json import JsonValueType
 
 from . import audit as audit_log
 from .const import (
@@ -51,7 +53,7 @@ SERVICE_DELETE_SCOPE = "delete_scope"
 
 #: Policy fields are flattened into the service schemas rather than nested, because a
 #: nested mapping is painful to fill in from the Developer Tools UI.
-POLICY_FIELDS = {
+POLICY_FIELDS: dict[Any, Any] = {
     vol.Optional("valid_from"): cv.datetime,
     vol.Optional("valid_until"): cv.datetime,
     vol.Optional("schedule_entities"): cv.entity_ids,
@@ -162,6 +164,11 @@ UPDATE_SCOPE_SCHEMA = CREATE_SCOPE_SCHEMA.extend(
 )
 
 
+def _iso(value: datetime | None) -> str | None:
+    """Render a datetime for a service response, which has to be JSON."""
+    return None if value is None else value.isoformat()
+
+
 def _policy_from_call(data: dict[str, Any]) -> Policy:
     """Build a Policy from flattened service fields."""
     return Policy(
@@ -259,8 +266,8 @@ def async_register_services(hass: HomeAssistant) -> None:
         return {
             ATTR_CODE: code,
             ATTR_CREDENTIAL_ID: credential.credential_id,
-            "valid_from": credential.policy.valid_from,
-            "valid_until": credential.policy.valid_until,
+            "valid_from": _iso(credential.policy.valid_from),
+            "valid_until": _iso(credential.policy.valid_until),
         }
 
     async def revoke(call: ServiceCall) -> None:
@@ -294,7 +301,10 @@ def async_register_services(hass: HomeAssistant) -> None:
         )
         if call.data["format"] == "csv":
             return {"format": "csv", "content": audit_log.to_csv(entries)}
-        return {"format": "json", "entries": audit_log.as_dicts(entries)}
+        return {
+            "format": "json",
+            "entries": cast("list[JsonValueType]", audit_log.as_dicts(entries)),
+        }
 
     async def create_scope(call: ServiceCall) -> ServiceResponse:
         """Add a scope."""
