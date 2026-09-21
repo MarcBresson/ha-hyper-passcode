@@ -15,8 +15,6 @@ casually reading a backup. It does not defend against an attacker with filesyste
 access, and the documentation must not imply otherwise.
 """
 
-from __future__ import annotations
-
 import hmac
 import secrets
 from collections.abc import Callable, Sequence

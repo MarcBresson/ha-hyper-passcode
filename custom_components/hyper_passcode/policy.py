@@ -5,8 +5,6 @@ the reason a user sees is the most fundamental one. A revoked code that has also
 expired reports ``revoked``, which is what somebody debugging it needs to know.
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 

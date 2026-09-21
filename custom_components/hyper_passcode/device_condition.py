@@ -4,8 +4,6 @@ Both conditions hang off a scope device, because validity is always relative to 
 scope: the same credential can be live on the gate and expired on the front door.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import voluptuous as vol

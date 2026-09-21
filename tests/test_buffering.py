@@ -4,8 +4,6 @@ Physical keypads emit one event per key, so this is the layer that turns a strea
 keystrokes into a submission. Getting it wrong makes every keypad flaky.
 """
 
-from __future__ import annotations
-
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant

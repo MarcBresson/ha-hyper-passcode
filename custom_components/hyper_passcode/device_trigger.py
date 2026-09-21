@@ -4,8 +4,6 @@ This is what makes codes usable without writing YAML: the automation editor offe
 "Front Door: valid code entered" directly, and optionally narrows it to one credential.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import voluptuous as vol

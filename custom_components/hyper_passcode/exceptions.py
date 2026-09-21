@@ -4,8 +4,6 @@ All derive from HomeAssistantError so they surface as readable messages in the U
 in service call responses rather than as tracebacks.
 """
 
-from __future__ import annotations
-
 from homeassistant.exceptions import HomeAssistantError
 
 

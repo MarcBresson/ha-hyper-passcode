@@ -1,7 +1,5 @@
 """The validity engine: one case per rejection reason, plus time handling."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 
 import pytest

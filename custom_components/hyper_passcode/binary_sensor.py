@@ -1,7 +1,5 @@
 """Binary sensor: brute-force lockout state per scope."""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from homeassistant.components.binary_sensor import (

@@ -5,8 +5,6 @@ so recorder and logbook get a full history without this buffer having to grow wi
 limit.
 """
 
-from __future__ import annotations
-
 import csv
 import io
 import json

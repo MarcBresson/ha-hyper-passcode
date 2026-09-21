@@ -4,8 +4,6 @@ These are the payoff for the automation editor: a trigger like "Front Door: vali
 entered" with no YAML at all.
 """
 
-from __future__ import annotations
-
 from homeassistant.components.device_automation import DeviceAutomationType
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
