@@ -32,7 +32,12 @@ async def async_setup_entry(
     await coordinator.async_load()
     entry.runtime_data = coordinator
 
+    # Before the platforms, because a code's device links to its scope's and Home
+    # Assistant refuses a link to a device that does not exist yet.
+    coordinator.async_register_scope_devices()
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    coordinator.async_sync_credential_devices()
 
     async_register_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_entry_updated))
@@ -68,3 +73,4 @@ async def _async_entry_updated(
         await hass.config_entries.async_reload(entry.entry_id)
         return
     coordinator.async_sync_subentries()
+    coordinator.async_sync_credential_devices()

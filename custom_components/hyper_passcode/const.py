@@ -17,6 +17,11 @@ SUBENTRY_TYPE_CREDENTIAL: Final = "credential"
 #: scope's, whatever ids happen to be generated.
 CREDENTIAL_DEVICE_PREFIX: Final = "credential"
 
+# How the two device kinds present themselves in the device registry.
+DEVICE_MANUFACTURER: Final = "HyperPasscode"
+DEVICE_MODEL_SCOPE: Final = "Passcode scope"
+DEVICE_MODEL_CREDENTIAL: Final = "Credential"
+
 
 def credential_device_identifier(credential_id: str) -> tuple[str, str]:
     """Return the device registry identifier for a credential."""

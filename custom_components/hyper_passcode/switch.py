@@ -1,7 +1,5 @@
 """Switch: enable or disable a credential without deleting it."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -45,7 +43,6 @@ class CredentialEnabledSwitch(SwitchEntity, HyperPasscodeCredentialEntity):
         """Set the entity's identity."""
         super().__init__(coordinator, credential)
         self._attr_unique_id = f"{credential.credential_id}_enabled"
-        self._attr_name = credential.label
 
     @property
     def is_on(self) -> bool | None:

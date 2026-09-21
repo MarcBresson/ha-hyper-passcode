@@ -4,6 +4,9 @@ Both scopes and credentials get a device of their own. That is what makes entity
 read properly: a "Uses" entity under a "Cleaner" device becomes ``sensor.cleaner_uses``
 rather than something prefixed with a shared device name. It also means deleting
 either one can simply remove its device and let the removal cascade to its entities.
+
+A code granted on exactly one scope is linked to that scope's device, so the device
+page shows the codes that open it instead of leaving both kinds in one flat list.
 """
 
 from collections.abc import Callable, Iterable
@@ -15,7 +18,13 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, credential_device_identifier
+from .const import (
+    DEVICE_MANUFACTURER,
+    DEVICE_MODEL_CREDENTIAL,
+    DEVICE_MODEL_SCOPE,
+    DOMAIN,
+    credential_device_identifier,
+)
 from .coordinator import (
     SIGNAL_CREDENTIAL_UPDATED,
     SIGNAL_CREDENTIALS_CHANGED,
@@ -24,8 +33,6 @@ from .coordinator import (
     HyperPasscodeCoordinator,
 )
 from .models import Credential, Scope
-
-MANUFACTURER = "HyperPasscode"
 
 type ScopeEntityFactory = Callable[[HyperPasscodeCoordinator, Scope], Entity]
 type CredentialEntityFactory = Callable[[HyperPasscodeCoordinator, Credential], Entity]
@@ -119,8 +126,8 @@ class HyperPasscodeScopeEntity(Entity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, scope.scope_id)},
             name=scope.name,
-            manufacturer=MANUFACTURER,
-            model="Passcode scope",
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL_SCOPE,
         )
 
     @property
@@ -157,12 +164,18 @@ class HyperPasscodeCredentialEntity(Entity):
         """Bind the entity to its credential."""
         self.coordinator = coordinator
         self.credential_id = credential.credential_id
-        self._attr_device_info = DeviceInfo(
+        device_info = DeviceInfo(
             identifiers={credential_device_identifier(credential.credential_id)},
             name=credential.label,
-            manufacturer=MANUFACTURER,
-            model="Credential",
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL_CREDENTIAL,
         )
+        # Omitted rather than set to None when the code has no single scope: passing
+        # the key at all would clear a link the registry is already holding, and
+        # ``async_sync_credential_devices`` is what deliberately clears one.
+        if (via := coordinator.async_credential_via_device_id(credential)) is not None:
+            device_info["via_device_id"] = via
+        self._attr_device_info = device_info
 
     @property
     def credential(self) -> Credential | None:

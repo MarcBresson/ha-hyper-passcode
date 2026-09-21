@@ -44,6 +44,8 @@ from .const import (
     DEFAULT_PER_CREDENTIAL_ENTITIES,
     DEFAULT_REJECT_WEAK_CODES,
     DEFAULT_WEAK_CODE_BLOCKLIST,
+    DEVICE_MANUFACTURER,
+    DEVICE_MODEL_SCOPE,
     DOMAIN,
     EVENT_SUBMISSION,
     REASON_TO_EVENT_TYPE,
@@ -226,6 +228,11 @@ class HyperPasscodeCoordinator:
             self._runtime.setdefault(scope_id, ScopeRuntime())
         for scope_id in before - after:
             self._runtime.pop(scope_id, None)
+
+        if after - before:
+            # Before the signal below adds the new scope's entities, so a code added
+            # to it straight afterwards already has a device to hang off.
+            self.async_register_scope_devices()
 
         for scope_id in after & before:
             # The cached action script may no longer match the scope's config.
@@ -595,6 +602,63 @@ class HyperPasscodeCoordinator:
         return dr.async_get(self.hass).async_get_device_by_identifier(
             (DOMAIN, scope_id), self.entry.entry_id
         )
+
+    @callback
+    def async_register_scope_devices(self) -> None:
+        """Register every scope's device before any entity is added.
+
+        A code's device hangs off its scope's through ``via_device_id``, and Home
+        Assistant refuses a link to a device that is not registered yet. Entity
+        platforms are set up concurrently, so letting a scope's own entities create
+        its device first would be a race; creating them here removes it.
+        """
+        registry = dr.async_get(self.hass)
+        for scope_id, scope in self._scopes.items():
+            registry.async_get_or_create(
+                config_entry_id=self.entry.entry_id,
+                config_subentry_id=scope_id,
+                identifiers={(DOMAIN, scope_id)},
+                name=scope.name,
+                manufacturer=DEVICE_MANUFACTURER,
+                model=DEVICE_MODEL_SCOPE,
+            )
+
+    @callback
+    def async_credential_via_device_id(self, credential: Credential) -> str | None:
+        """Return the scope device a credential's device should sit under.
+
+        Only a code granted on exactly one scope is nested. With two there is no
+        single parent -- grants are many-to-many and a device tree cannot say so --
+        and picking one of them would hide the rest, so such a code stays top level.
+        """
+        scope_ids = [
+            grant.scope_id
+            for grant in credential.grants
+            if grant.scope_id in self._scopes
+        ]
+        if len(scope_ids) != 1:
+            return None
+        return self.async_device_id(scope_ids[0])
+
+    @callback
+    def async_sync_credential_devices(self) -> None:
+        """Re-parent the credential devices whose grants have changed.
+
+        ``device_info`` is read once, when an entity is added, so a code granted a
+        second scope -- or moved to another one -- would otherwise keep the place in
+        the tree it had when it was created.
+        """
+        registry = dr.async_get(self.hass)
+        for credential in self._credentials.values():
+            device = registry.async_get_device_by_identifier(
+                credential_device_identifier(credential.credential_id),
+                self.entry.entry_id,
+            )
+            if device is None:
+                continue
+            via_device_id = self.async_credential_via_device_id(credential)
+            if device.via_device_id != via_device_id:
+                registry.async_update_device(device.id, via_device_id=via_device_id)
 
     # ------------------------------------------------------------------
     # Keystroke buffering
@@ -997,6 +1061,7 @@ class HyperPasscodeCoordinator:
         # Reflect it at once, so a caller can use the scope immediately.
         self._scopes[scope.scope_id] = scope
         self._runtime.setdefault(scope.scope_id, ScopeRuntime())
+        self.async_register_scope_devices()
         async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
         return scope
 
