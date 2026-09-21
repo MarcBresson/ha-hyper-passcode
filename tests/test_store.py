@@ -15,6 +15,7 @@ from custom_components.hyper_passcode.const import (
     SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
     CodeType,
+    GraceMode,
     Outcome,
 )
 from custom_components.hyper_passcode.models import (
@@ -40,6 +41,8 @@ V1_FIXTURE = {
             "enabled": True,
             "revoked": False,
             "use_count": 7,
+            "uncounted_uses": 2,
+            "last_counted_use": "2026-09-19T08:00:00+00:00",
             "last_used": "2026-09-19T08:30:00+00:00",
             "recent_uses": ["2026-09-19T08:30:00+00:00"],
             "created_at": "2026-09-01T09:00:00+00:00",
@@ -78,6 +81,8 @@ CREDENTIAL_CONFIG = {
         "uses_per_hour": None,
         "uses_per_day": 2,
         "cooldown_seconds": 30,
+        "grace_period_seconds": 300,
+        "grace_mode": "fixed",
         "allowed_sources": ["keypad"],
     },
     "grants": [{"scope_id": "scope-1", "policy": None, "actions": None}],
@@ -175,6 +180,52 @@ def test_recent_uses_are_capped():
     assert len(credential.recent_uses) == MAX_RECENT_USES
     # The oldest are the ones dropped.
     assert credential.recent_uses[-1] == WHEN + timedelta(minutes=MAX_RECENT_USES + 24)
+
+
+def test_an_uncounted_use_is_recorded_without_moving_the_counted_anchor():
+    credential = Credential(credential_id="c", label="L", lookup_index="i")
+    credential.record_use(WHEN)
+    credential.record_use(WHEN + timedelta(minutes=1), counted=False)
+
+    # It happened, so it lands everywhere a use lands...
+    assert credential.use_count == 2
+    assert credential.last_used == WHEN + timedelta(minutes=1)
+    assert len(credential.recent_uses) == 2
+    # ...it just did not eat into the allowance, and did not move the fixed window.
+    assert credential.uncounted_uses == 1
+    assert credential.counted_uses == 1
+    assert credential.last_counted_use == WHEN
+
+
+def test_a_credential_stored_before_grace_periods_loads_with_them_off():
+    # No STORAGE_VERSION bump: every new field reads back through a defaulted get(),
+    # so a credential written by an older release behaves exactly as it used to.
+    credential = Credential.assemble(
+        "Old",
+        {"credential_id": "c", "policy": {"max_uses": 5}},
+        {"lookup_index": "i", "use_count": 3},
+    )
+
+    assert credential.policy.grace_period_seconds is None
+    assert credential.policy.grace_mode is GraceMode.FIXED
+    assert credential.uncounted_uses == 0
+    assert credential.last_counted_use is None
+    assert credential.counted_uses == 3
+
+
+def test_a_policy_mode_survives_a_round_trip_through_the_store():
+    policy = Policy.from_dict(
+        Policy(grace_period_seconds=300, grace_mode=GraceMode.SLIDING).to_dict()
+    )
+    assert policy.grace_period_seconds == 300
+    assert policy.grace_mode is GraceMode.SLIDING
+    # A subentry holds plain JSON, so the mode has to leave as a string.
+    assert policy.to_dict()["grace_mode"] == "sliding"
+
+
+def test_a_null_grace_mode_falls_back_to_fixed():
+    # null is how update_code removes a rule, and a mode has no "unset".
+    assert Policy.from_dict({"grace_mode": None}).grace_mode is GraceMode.FIXED
 
 
 def test_per_grant_policy_overrides_the_credential_policy():

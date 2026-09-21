@@ -84,6 +84,27 @@ class StoreMethod(StrEnum):
     HASHED = "hashed"
 
 
+class GraceMode(StrEnum):
+    """How a credential's re-entry grace window is anchored.
+
+    The grace period lets somebody back through a door without using another of the
+    code's uses up. What differs between the two modes is only *which use the window
+    is measured from*, and with it whether the window can be walked forward.
+    """
+
+    #: Measured from the use that was counted against ``max_uses``, and never
+    #: extended. Five minutes' grace on a one-time code means five minutes.
+    FIXED = "fixed"
+    #: Measured from the last use of any kind, counted or not, so the window restarts
+    #: on every re-entry and the code stays usable while the gaps stay short.
+    SLIDING = "sliding"
+
+
+#: A window that cannot be walked forward is the safer default: a sliding one puts no
+#: upper bound on how long a single-use code stays alive.
+DEFAULT_GRACE_MODE: Final = GraceMode.FIXED
+
+
 class Outcome(StrEnum):
     """The result of a submission."""
 

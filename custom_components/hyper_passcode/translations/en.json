@@ -26,7 +26,7 @@
       "step": {
         "user": {
           "title": "Add code",
-          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits, notes and tags are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
+          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits, the re-entry grace period, notes and tags are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
           "data": {
             "name": "Name",
             "code": "Code",
@@ -56,7 +56,7 @@
         },
         "reconfigure": {
           "title": "Edit code",
-          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits, notes and tags live on this code's device, not in this dialog.",
+          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits, the re-entry grace period, notes and tags live on this code's device, not in this dialog.",
           "data": {
             "name": "Name",
             "code": "New code",
@@ -247,7 +247,17 @@
       "max_uses": { "name": "Max uses" },
       "uses_per_hour": { "name": "Uses per hour" },
       "uses_per_day": { "name": "Uses per day" },
-      "cooldown_seconds": { "name": "Cooldown" }
+      "cooldown_seconds": { "name": "Cooldown" },
+      "grace_period_seconds": { "name": "Re-entry grace period" }
+    },
+    "select": {
+      "grace_mode": {
+        "name": "Re-entry grace window",
+        "state": {
+          "fixed": "Fixed -- runs from the use that was counted, and does not extend",
+          "sliding": "Sliding -- every re-entry restarts the window"
+        }
+      }
     },
     "datetime": {
       "valid_from": { "name": "Valid from" },
@@ -314,6 +324,8 @@
         "uses_per_hour": { "name": "Uses per hour", "description": "Rolling hourly limit." },
         "uses_per_day": { "name": "Uses per day", "description": "Rolling 24-hour limit." },
         "cooldown_seconds": { "name": "Cooldown", "description": "Minimum gap between uses." },
+        "grace_period_seconds": { "name": "Re-entry grace period", "description": "Seconds after a counted use during which further uses do not count towards the maximum -- for the delivery driver who has to come straight back out. Leave empty for none. The cooldown, and the hourly and daily limits, all still apply." },
+        "grace_mode": { "name": "Re-entry grace window", "description": "Fixed runs the window from the use that was counted and never extends it. Sliding restarts it on every use, so the code stays usable for as long as the gaps stay shorter than the period." },
         "allowed_sources": { "name": "Allowed sources", "description": "Restricts where this code may be entered. Empty means anywhere." }
       }
     },
@@ -327,6 +339,7 @@
         "valid_until": { "name": "Valid until", "description": "Overrides duration when both are given." },
         "duration": { "name": "Duration", "description": "How long the code stays valid. Defaults to two hours." },
         "max_uses": { "name": "Maximum uses", "description": "Defaults to a single use." },
+        "grace_period_seconds": { "name": "Re-entry grace period", "description": "Seconds during which coming back through does not use the code up. The window runs from the first use and does not extend." },
         "length": { "name": "Length", "description": "Length of the generated code." },
         "keep_viewable": { "name": "Keep code viewable", "description": "On by default, since a delivery code you cannot read back is of no use." }
       }
@@ -358,6 +371,8 @@
         "uses_per_hour": { "name": "Uses per hour", "description": "Rolling hourly limit." },
         "uses_per_day": { "name": "Uses per day", "description": "Rolling 24-hour limit." },
         "cooldown_seconds": { "name": "Cooldown", "description": "Minimum gap between uses." },
+        "grace_period_seconds": { "name": "Re-entry grace period", "description": "Seconds after a counted use during which further uses do not count towards the maximum -- for the delivery driver who has to come straight back out. Leave empty for none. The cooldown, and the hourly and daily limits, all still apply." },
+        "grace_mode": { "name": "Re-entry grace window", "description": "Fixed runs the window from the use that was counted and never extends it. Sliding restarts it on every use, so the code stays usable for as long as the gaps stay shorter than the period." },
         "allowed_sources": { "name": "Allowed sources", "description": "Restricts where this code may be entered. Empty means anywhere." }
       }
     },

@@ -5,9 +5,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.hyper_passcode.const import RejectionReason, Source
+from custom_components.hyper_passcode.const import GraceMode, RejectionReason, Source
 from custom_components.hyper_passcode.models import Credential, Grant, Policy
-from custom_components.hyper_passcode.policy import evaluate, next_boundary
+from custom_components.hyper_passcode.policy import (
+    evaluate,
+    is_within_grace,
+    next_boundary,
+)
 
 SCOPE = "scope-1"
 NOW = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
@@ -155,6 +159,137 @@ async def test_uses_per_day_cannot_be_doubled_over_midnight(hass: HomeAssistant)
 
     credential.recent_uses = [NOW - timedelta(hours=25)]
     assert check(hass, credential) is None
+
+
+# ----------------------------------------------------------------------
+# Re-entry grace period
+# ----------------------------------------------------------------------
+
+
+def exhausted(mode: GraceMode = GraceMode.FIXED, **policy_kwargs) -> Credential:
+    """A one-use code that has had its one use, at NOW, and a 5 minute grace."""
+    credential = make_credential(
+        Policy(max_uses=1, grace_period_seconds=300, grace_mode=mode, **policy_kwargs),
+        use_count=1,
+    )
+    credential.last_used = credential.last_counted_use = NOW
+    return credential
+
+
+async def test_a_use_inside_the_grace_period_does_not_count_towards_max_uses(
+    hass: HomeAssistant,
+):
+    # The whole point: the driver who has to come straight back out through the door
+    # they were just let through is still on the same visit.
+    assert check(hass, exhausted(), now=NOW + timedelta(minutes=3)) is None
+
+
+async def test_the_first_use_is_never_inside_a_grace_period(hass: HomeAssistant):
+    # Nothing has opened a window yet, so there is nothing to be inside of.
+    credential = make_credential(Policy(max_uses=1, grace_period_seconds=300))
+    assert is_within_grace(credential, credential.policy, NOW) is False
+
+
+async def test_a_fixed_grace_window_does_not_extend(hass: HomeAssistant):
+    credential = exhausted()
+
+    assert check(hass, credential, now=NOW + timedelta(minutes=4, seconds=30)) is None
+    # Exclusive at the boundary, like every other window in the engine.
+    for lapsed in (timedelta(minutes=5), timedelta(minutes=6)):
+        assert (
+            check(hass, credential, now=NOW + lapsed)
+            is RejectionReason.MAX_USES_REACHED
+        )
+
+
+async def test_a_sliding_grace_window_restarts_on_every_use(hass: HomeAssistant):
+    credential = exhausted(GraceMode.SLIDING)
+    # A free use four minutes in moved last_used but not last_counted_use, which is
+    # the whole of the difference between the two modes.
+    credential.last_used = NOW + timedelta(minutes=4)
+
+    assert check(hass, credential, now=NOW + timedelta(minutes=6)) is None
+    assert (
+        check(hass, credential, now=NOW + timedelta(minutes=10))
+        is RejectionReason.MAX_USES_REACHED
+    )
+
+
+async def test_the_same_state_is_refused_under_fixed_and_allowed_under_sliding(
+    hass: HomeAssistant,
+):
+    # Switching a code to fixed can take it from usable to refused on the spot. That
+    # is the honest meaning of "does not extend", not a bug to special-case away.
+    at = NOW + timedelta(minutes=6)
+    for mode, expected in (
+        (GraceMode.FIXED, RejectionReason.MAX_USES_REACHED),
+        (GraceMode.SLIDING, None),
+    ):
+        credential = exhausted(mode)
+        credential.last_used = NOW + timedelta(minutes=4)
+        assert check(hass, credential, now=at) is expected
+
+
+async def test_a_grace_period_with_no_use_limit_exempts_nothing(hass: HomeAssistant):
+    # Without a limit there is nothing to exempt, and banking exemptions anyway would
+    # hand a fresh allowance to a max_uses set later.
+    credential = make_credential(Policy(grace_period_seconds=300), use_count=9)
+    credential.last_used = credential.last_counted_use = NOW
+
+    assert is_within_grace(credential, credential.policy, NOW) is False
+
+    # So none of those nine uses banked an allowance: adding a limit later finds the
+    # code fully spent, rather than crediting it for the ones it "got free".
+    credential.policy.max_uses = 1
+    assert credential.counted_uses == 9
+    assert (
+        check(hass, credential, now=NOW + timedelta(hours=1))
+        is RejectionReason.MAX_USES_REACHED
+    )
+
+
+async def test_a_grace_period_does_not_exempt_a_code_from_its_cooldown(
+    hass: HomeAssistant,
+):
+    # The two settings pull against each other on purpose: grace says "come straight
+    # back and it is free", a cooldown says "not yet". The stricter one answers.
+    credential = exhausted(cooldown_seconds=60)
+    assert (
+        check(hass, credential, now=NOW + timedelta(seconds=30))
+        is RejectionReason.RATE_LIMITED
+    )
+    assert check(hass, credential, now=NOW + timedelta(seconds=61)) is None
+
+
+async def test_a_grace_period_does_not_exempt_a_code_from_its_daily_limit(
+    hass: HomeAssistant,
+):
+    credential = exhausted(uses_per_day=1)
+    credential.recent_uses = [NOW]
+    assert (
+        check(hass, credential, now=NOW + timedelta(minutes=3))
+        is RejectionReason.RATE_LIMITED
+    )
+
+
+async def test_a_lapsed_grace_period_still_reports_max_uses_reached(
+    hass: HomeAssistant,
+):
+    # No new rejection reason was invented, so the enum sensor and the event types
+    # need nothing added to them.
+    assert (
+        check(hass, exhausted(), now=NOW + timedelta(hours=1))
+        is RejectionReason.MAX_USES_REACHED
+    )
+
+
+async def test_switching_the_grace_period_off_bites_immediately(hass: HomeAssistant):
+    credential = exhausted()
+    credential.policy.grace_period_seconds = 0
+    assert (
+        check(hass, credential, now=NOW + timedelta(minutes=1))
+        is RejectionReason.MAX_USES_REACHED
+    )
 
 
 async def test_first_failing_rule_wins(hass: HomeAssistant):

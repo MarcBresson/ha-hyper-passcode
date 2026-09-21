@@ -36,6 +36,7 @@ Validity
 - `schedule.*` helpers for recurring weekly windows
 - Any on/off entity as a condition, including `calendar`, which gives booking-driven codes
 - Lifetime use limits, rolling per-hour and per-day limits, and a cooldown between uses
+- A re-entry grace period, so a one-time code means one visit rather than one door opening
 - Source restrictions, so a code can work on the wall keypad but not the web UI
 - Enable, disable and revoke, with revocation being final
 
@@ -84,6 +85,8 @@ Settings, editable from the device page, a dashboard or an automation:
 | `number.<code>_uses_per_hour` | code | Rolling hourly limit. `0` is unlimited |
 | `number.<code>_uses_per_day` | code | Rolling 24-hour limit. `0` is unlimited |
 | `number.<code>_cooldown` | code | Minimum seconds between uses |
+| `number.<code>_re_entry_grace_period` | code | Seconds of re-entry that don't count towards `max_uses`. `0` is off |
+| `select.<code>_re_entry_grace_window` | code | Whether that window is `fixed` or `sliding` |
 | `datetime.<code>_valid_from` | code | Start of the validity window |
 | `datetime.<code>_valid_until` | code | End of the validity window |
 | `text.<code>_notes` | code | Free text |
@@ -151,7 +154,8 @@ tick box is the one thing that has to be decided up front: a code nobody kept a 
 cannot be recovered later, only regenerated.
 
 The dialog also takes the schedule and condition entities, since those are entity pickers.
-The rest of the validity rules — the window, the use limits, the cooldown — are entities on
+The rest of the validity rules — the window, the use limits, the cooldown, the re-entry
+grace period — are entities on
 the new code's own device, so "extend the guest code to Sunday" is a datetime you set rather
 than a dialog you reopen.
 
@@ -250,6 +254,7 @@ Rules combine, and all of them have to pass:
 | `max_uses` | Lifetime limit. Set it to `1` for a one-time code |
 | `uses_per_hour` / `uses_per_day` | Rolling windows rather than calendar-aligned, so a limit can't be doubled either side of midnight |
 | `cooldown_seconds` | Minimum gap between uses |
+| `grace_period_seconds` / `grace_mode` | Re-entry window whose uses don't count towards `max_uses`. See below |
 | `allowed_sources` | Restrict a code to the wall keypad but not the web UI, for instance |
 
 Everything in that table except the entity lists and `allowed_sources` is an entity on the
@@ -271,6 +276,46 @@ data:
 
 A condition entity that is missing, unavailable or unknown counts as off. An unreadable
 condition is never treated as permission to enter.
+
+### Coming straight back in
+
+A one-time code is no use to a delivery driver who has to step back out to the van. The
+re-entry grace period is a window after a use during which further uses don't count
+towards `max_uses` — so `max_uses: 1` means one *visit* rather than one door opening.
+
+The uses still happen: the door opens, the actions run, the audit log records them and
+`sensor.<code>_uses` counts them. What changes is only what they're charged against, which
+`uncounted_uses` on that sensor reports.
+
+`select.<code>_re_entry_grace_window` decides where the window is measured from. With a
+five-minute grace on a one-time code first used at 12:00:
+
+| Entry | `fixed` | `sliding` |
+|---|---|---|
+| 12:00 | counted | counted |
+| 12:03 | free | free |
+| 12:04 | free | free |
+| 12:09 | refused — the window ran from 12:00 | free — 12:04 restarted it |
+
+`fixed` is the default and the safer one: `sliding` puts no upper bound on how long a
+single-use code stays alive, since every re-entry pushes the window out again.
+
+Two things worth knowing. A grace period never exempts a use from `cooldown_seconds` or
+from the hourly and daily limits — setting a cooldown and a grace period on the same code
+leaves only the band between them usable, since one says "come straight back" and the other
+says "not yet". And switching a code from `sliding` to `fixed` can refuse it immediately,
+because the window snaps back to the last counted use; that is what "does not extend"
+means, rather than a bug.
+
+The quickest way to hand one out:
+
+```yaml
+action: hyper_passcode.create_otp
+data:
+  scope_id: "<scope_id>"
+  label: Delivery
+  grace_period_seconds: 300
+```
 
 ### Why a code was refused
 

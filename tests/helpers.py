@@ -27,6 +27,17 @@ async def set_number(hass: HomeAssistant, entity_id: str, value: float) -> None:
     await hass.async_block_till_done()
 
 
+async def set_select(hass: HomeAssistant, entity_id: str, option: str) -> None:
+    """Pick an option on a select entity the way the UI does."""
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": entity_id, "option": option},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+
 async def set_text(hass: HomeAssistant, entity_id: str, value: str) -> None:
     """Set a text entity the way the UI does."""
     await hass.services.async_call(

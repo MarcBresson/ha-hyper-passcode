@@ -9,12 +9,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .const import (
+    DEFAULT_GRACE_MODE,
     DEFAULT_INTER_KEY_TIMEOUT,
     DEFAULT_LOCKOUT_DURATION,
     DEFAULT_LOCKOUT_THRESHOLD,
     DEFAULT_TERMINATOR_KEYS,
     MAX_RECENT_USES,
     CodeType,
+    GraceMode,
     Outcome,
 )
 
@@ -66,6 +68,12 @@ class Policy:
     uses_per_hour: int | None = None
     uses_per_day: int | None = None
     cooldown_seconds: int | None = None
+    #: Re-entry window during which a use is not counted against ``max_uses``, so a
+    #: one-time code survives the delivery driver stepping back out to the van. None
+    #: or zero is off, and it never exempts a use from the cooldown or the
+    #: per-hour / per-day limits.
+    grace_period_seconds: int | None = None
+    grace_mode: GraceMode = DEFAULT_GRACE_MODE
     #: Empty means every source is allowed.
     allowed_sources: list[str] = field(default_factory=list)
 
@@ -80,6 +88,8 @@ class Policy:
             "uses_per_hour": self.uses_per_hour,
             "uses_per_day": self.uses_per_day,
             "cooldown_seconds": self.cooldown_seconds,
+            "grace_period_seconds": self.grace_period_seconds,
+            "grace_mode": str(self.grace_mode),
             "allowed_sources": list(self.allowed_sources),
         }
 
@@ -95,6 +105,11 @@ class Policy:
             uses_per_hour=data.get("uses_per_hour"),
             uses_per_day=data.get("uses_per_day"),
             cooldown_seconds=data.get("cooldown_seconds"),
+            grace_period_seconds=data.get("grace_period_seconds"),
+            # ``or`` rather than a default argument: a policy stored before grace
+            # periods existed has no key at all, and an explicit null is how
+            # update_code asks for the default back. A mode has no "unset".
+            grace_mode=GraceMode(data.get("grace_mode") or DEFAULT_GRACE_MODE),
             allowed_sources=list(data.get("allowed_sources") or []),
         )
 
@@ -153,12 +168,34 @@ class Credential:
     policy: Policy = field(default_factory=Policy)
     grants: list[Grant] = field(default_factory=list)
     use_count: int = 0
+    #: How many of those uses a re-entry grace period exempted from ``max_uses``.
+    #: Stored as the exempt count rather than the counted one so that zero -- what
+    #: every credential written before this field existed reads back as -- means "all
+    #: of them counted", which is what those credentials did.
+    uncounted_uses: int = 0
+    #: When the last use that *was* counted against ``max_uses`` happened. Anchors a
+    #: fixed grace window; a sliding one anchors on ``last_used`` instead, which is
+    #: the whole of the difference between the two modes. A scalar rather than
+    #: something read out of recent_uses, which is capped and so cannot be trusted to
+    #: still hold the use that opened the window.
+    last_counted_use: datetime | None = None
     last_used: datetime | None = None
     #: Recent successful uses, newest last, capped at MAX_RECENT_USES. Backs the
     #: per-hour / per-day limits and the anti-replay cooldown.
     recent_uses: list[datetime] = field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @property
+    def counted_uses(self) -> int:
+        """How many uses actually counted against ``max_uses``.
+
+        The limit is checked against this rather than ``use_count`` so that exempting
+        a use never means moving ``policy.max_uses``: that is a config subentry field
+        and a user-editable number entity, and rewriting it on every door open would
+        be a lie on both.
+        """
+        return self.use_count - self.uncounted_uses
 
     def grant_for(self, scope_id: str) -> Grant | None:
         """Return this credential's grant on ``scope_id``, if it has one."""
@@ -184,10 +221,26 @@ class Credential:
         for field_ in fields(self):
             setattr(self, field_.name, getattr(other, field_.name))
 
-    def record_use(self, when: datetime) -> None:
-        """Record a successful use, trimming the rate-limiting window."""
+    def record_use(self, when: datetime, *, counted: bool = True) -> None:
+        """Record a successful use, trimming the rate-limiting window.
+
+        ``counted=False`` marks a use that fell inside the re-entry grace period: it
+        is exempt from ``max_uses``, but it still lands in ``use_count``, in
+        ``last_used`` and in ``recent_uses``, because it really happened at the door.
+        That last one is why a grace period does not also dodge the per-hour and
+        per-day limits -- they read the same list either way.
+
+        Whether a use is counted is decided by ``policy.is_within_grace`` before this
+        runs, since this is what moves the anchor that answer depends on. The decision
+        is passed in rather than made here so that this module stays free of the
+        engine it would otherwise have to import.
+        """
         self.use_count += 1
         self.last_used = when
+        if counted:
+            self.last_counted_use = when
+        else:
+            self.uncounted_uses += 1
         self.recent_uses.append(when)
         if len(self.recent_uses) > MAX_RECENT_USES:
             del self.recent_uses[:-MAX_RECENT_USES]
@@ -223,6 +276,8 @@ class Credential:
             "enabled": self.enabled,
             "revoked": self.revoked,
             "use_count": self.use_count,
+            "uncounted_uses": self.uncounted_uses,
+            "last_counted_use": _dt_to_str(self.last_counted_use),
             "last_used": _dt_to_str(self.last_used),
             "recent_uses": [_dt_to_str(d) for d in self.recent_uses],
             "created_at": _dt_to_str(self.created_at),
@@ -249,6 +304,8 @@ class Credential:
             policy=Policy.from_dict(config.get("policy") or {}),
             grants=[Grant.from_dict(g) for g in config.get("grants") or []],
             use_count=secret.get("use_count", 0),
+            uncounted_uses=secret.get("uncounted_uses", 0),
+            last_counted_use=_dt_from_str(secret.get("last_counted_use")),
             last_used=_dt_from_str(secret.get("last_used")),
             recent_uses=[
                 parsed
@@ -285,6 +342,8 @@ class Credential:
             policy=Policy.from_dict(data.get("policy") or {}),
             grants=[Grant.from_dict(g) for g in data.get("grants") or []],
             use_count=data.get("use_count", 0),
+            uncounted_uses=data.get("uncounted_uses", 0),
+            last_counted_use=_dt_from_str(data.get("last_counted_use")),
             last_used=_dt_from_str(data.get("last_used")),
             recent_uses=[
                 parsed

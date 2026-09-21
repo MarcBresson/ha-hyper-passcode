@@ -195,13 +195,20 @@ class CredentialUsesSensor(SensorEntity, HyperPasscodeCredentialEntity):
             return {}
         policy = credential.policy
         remaining = (
-            max(policy.max_uses - credential.use_count, 0)
+            max(policy.max_uses - credential.counted_uses, 0)
             if policy.max_uses is not None
             else None
         )
         return {
             "remaining_uses": remaining,
             "max_uses": policy.max_uses,
+            # Why the state and the remaining count need not add up: these are the
+            # uses that fell inside the re-entry grace period. Both grace settings
+            # are repeated here so the block still explains itself where per-credential
+            # entities are turned off and neither of them has an entity.
+            "uncounted_uses": credential.uncounted_uses,
+            "grace_period_seconds": policy.grace_period_seconds,
+            "grace_mode": str(policy.grace_mode),
             "valid_from": policy.valid_from,
             "valid_until": policy.valid_until,
             "enabled": credential.enabled,

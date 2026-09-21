@@ -144,6 +144,22 @@ create_code:
           min: 0
           max: 86400
           mode: box
+    grace_period_seconds:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    grace_mode:
+      default: fixed
+      selector:
+        select:
+          options:
+            - value: fixed
+              label: Fixed -- runs from the use that was counted, and does not extend
+            - value: sliding
+              label: Sliding -- every re-entry restarts the window
     allowed_sources:
       selector:
         select:
@@ -177,6 +193,13 @@ create_otp:
         number:
           min: 1
           max: 1000
+          mode: box
+    grace_period_seconds:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
           mode: box
     length:
       selector:
@@ -272,6 +295,23 @@ update_code:
           max: 86400
           unit_of_measurement: s
           mode: box
+    grace_period_seconds:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    # No default: a services.yaml default pre-fills the field, which then gets sent,
+    # which would reset the mode on every update driven from the UI.
+    grace_mode:
+      selector:
+        select:
+          options:
+            - value: fixed
+              label: Fixed -- runs from the use that was counted, and does not extend
+            - value: sliding
+              label: Sliding -- every re-entry restarts the window
     allowed_sources:
       selector:
         select:

@@ -100,7 +100,15 @@ def _describe(result: SubmissionResult, dry_run: bool) -> str:
         who = f" as **{result.label}**" if result.label else ""
         owner = f", owned by `{result.person}`" if result.person else ""
         ran = " No actions were run." if dry_run else " The scope's actions ran."
-        return f"{prefix}: **accepted**{who}{owner}.{ran}"
+        # Worth saying out loud: otherwise a one-time code accepted twice over looks
+        # like the use limit is broken.
+        grace = (
+            " It is inside its re-entry grace period, so this use does not count"
+            " towards its maximum."
+            if result.in_grace
+            else ""
+        )
+        return f"{prefix}: **accepted**{who}{owner}.{grace}{ran}"
 
     reason = str(result.reason) if result.reason else "unknown"
     # A refusal only names a code when one was actually matched; an unknown code

@@ -5,7 +5,7 @@ the same settings -- written through to the subentry, honoured by the engine, an
 left alone by a dialog that no longer shows them.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from homeassistant.const import STATE_UNKNOWN
@@ -16,11 +16,12 @@ from custom_components.hyper_passcode.const import (
     DEFAULT_INTER_KEY_TIMEOUT,
     DEFAULT_LOCKOUT_DURATION,
     DEFAULT_LOCKOUT_THRESHOLD,
+    GraceMode,
     RejectionReason,
     Source,
     StoreMethod,
 )
-from tests.helpers import set_number, set_text, state_of
+from tests.helpers import set_number, set_select, set_text, state_of
 
 
 async def a_code(coordinator, scope, **kwargs):
@@ -145,6 +146,7 @@ async def test_policy_numbers_start_at_zero_for_no_limit(
         "number.cleaner_uses_per_hour",
         "number.cleaner_uses_per_day",
         "number.cleaner_cooldown",
+        "number.cleaner_re_entry_grace_period",
     ):
         assert float(state_of(hass, entity_id).state) == 0, entity_id
 
@@ -184,6 +186,78 @@ async def test_a_policy_number_does_not_disturb_the_rest_of_the_policy(
     await set_number(hass, "number.cleaner_cooldown", 60)
 
     assert credential.policy.cooldown_seconds == 60
+    assert credential.policy.uses_per_day == 3
+    assert credential.policy.allowed_sources == ["keypad"]
+
+
+# ----------------------------------------------------------------------
+# Re-entry grace period
+# ----------------------------------------------------------------------
+
+
+async def test_the_grace_window_starts_off_and_fixed(hass: HomeAssistant, entry, scope):
+    await a_code(entry.runtime_data, scope)
+    await hass.async_block_till_done()
+
+    assert float(state_of(hass, "number.cleaner_re_entry_grace_period").state) == 0
+    assert state_of(hass, "select.cleaner_re_entry_grace_window").state == "fixed"
+
+
+async def test_a_grace_period_set_from_its_entity_is_enforced(
+    hass: HomeAssistant, entry, scope, freezer
+):
+    coordinator = entry.runtime_data
+    credential, code = await a_code(coordinator, scope)
+    await hass.async_block_till_done()
+
+    await set_number(hass, "number.cleaner_max_uses", 1)
+    await set_number(hass, "number.cleaner_re_entry_grace_period", 300)
+    assert credential.policy.grace_period_seconds == 300
+
+    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    freezer.tick(timedelta(minutes=2))
+    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+
+    freezer.tick(timedelta(minutes=4))
+    refused = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    assert refused.reason is RejectionReason.MAX_USES_REACHED
+
+    # Zero turns it off, and the exemption stops on the next submission.
+    await set_number(hass, "number.cleaner_re_entry_grace_period", 0)
+    assert credential.policy.grace_period_seconds is None
+
+
+async def test_the_grace_window_mode_is_written_through_to_the_subentry(
+    hass: HomeAssistant, entry, scope
+):
+    coordinator = entry.runtime_data
+    credential, _code = await a_code(coordinator, scope)
+    await hass.async_block_till_done()
+
+    await set_select(hass, "select.cleaner_re_entry_grace_window", "sliding")
+
+    assert credential.policy.grace_mode is GraceMode.SLIDING
+    subentry = coordinator.async_credential_subentry(credential.credential_id)
+    # A subentry holds plain JSON, and it is what survives a restart.
+    assert subentry.data["policy"]["grace_mode"] == "sliding"
+
+
+async def test_a_grace_entity_does_not_disturb_the_rest_of_the_policy(
+    hass: HomeAssistant, entry, scope
+):
+    from custom_components.hyper_passcode.models import Policy
+
+    coordinator = entry.runtime_data
+    credential, _code = await a_code(
+        coordinator, scope, policy=Policy(uses_per_day=3, allowed_sources=["keypad"])
+    )
+    await hass.async_block_till_done()
+
+    await set_number(hass, "number.cleaner_re_entry_grace_period", 120)
+    await set_select(hass, "select.cleaner_re_entry_grace_window", "sliding")
+
+    assert credential.policy.grace_period_seconds == 120
+    assert credential.policy.grace_mode is GraceMode.SLIDING
     assert credential.policy.uses_per_day == 3
     assert credential.policy.allowed_sources == ["keypad"]
 
@@ -342,3 +416,49 @@ async def test_update_code_touches_only_what_it_was_given(
 
     assert credential.policy.valid_until is None
     assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+
+
+async def test_update_code_can_set_and_clear_the_grace_window(
+    hass: HomeAssistant, entry, scope
+):
+    from custom_components.hyper_passcode.const import DOMAIN
+    from custom_components.hyper_passcode.models import Policy
+
+    coordinator = entry.runtime_data
+    credential, _code = await a_code(coordinator, scope, policy=Policy(max_uses=4))
+    await hass.async_block_till_done()
+
+    await hass.services.async_call(
+        DOMAIN,
+        "update_code",
+        {
+            "credential_id": credential.credential_id,
+            "grace_period_seconds": 300,
+            "grace_mode": "sliding",
+        },
+        blocking=True,
+    )
+
+    assert credential.policy.grace_period_seconds == 300
+    assert credential.policy.grace_mode is GraceMode.SLIDING
+    assert credential.policy.max_uses == 4
+
+    # Leaving the mode out has to leave it alone, which is why POLICY_FIELDS carries
+    # no default for it -- UPDATE_POLICY_FIELDS is derived from the same dict.
+    await hass.services.async_call(
+        DOMAIN,
+        "update_code",
+        {"credential_id": credential.credential_id, "uses_per_day": 2},
+        blocking=True,
+    )
+    assert credential.policy.grace_mode is GraceMode.SLIDING
+
+    # A mode has no "unset", so null puts it back to the default.
+    await hass.services.async_call(
+        DOMAIN,
+        "update_code",
+        {"credential_id": credential.credential_id, "grace_mode": None},
+        blocking=True,
+    )
+    assert credential.policy.grace_mode is GraceMode.FIXED
+    assert credential.policy.grace_period_seconds == 300

@@ -4,6 +4,8 @@ Everything else tests the coordinator directly; this exercises the layer a user
 actually touches -- schemas, defaults, response data -- against a real target entity.
 """
 
+from datetime import timedelta
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
@@ -82,6 +84,69 @@ async def test_delivery_code_walkthrough(hass: HomeAssistant, entry):
     assert again["reason"] == RejectionReason.MAX_USES_REACHED
     assert state_of(hass, TARGET).state == "off"
     assert state_of(hass, uses).state == "1"
+
+
+async def test_a_delivery_code_with_a_grace_period_walkthrough(
+    hass: HomeAssistant, entry, freezer
+):
+    assert await async_setup_component(
+        hass, "input_boolean", {"input_boolean": {"door_relay": None}}
+    )
+    scope = await call(
+        hass,
+        "create_scope",
+        {
+            "name": "Front Door",
+            "default_actions": [
+                {"action": "input_boolean.turn_on", "target": {"entity_id": TARGET}}
+            ],
+        },
+    )
+    scope_id = scope["scope_id"]
+    await hass.async_block_till_done()
+
+    otp = await call(
+        hass,
+        "create_otp",
+        {
+            "scope_id": scope_id,
+            "label": "Grocery delivery",
+            "grace_period_seconds": 300,
+        },
+    )
+    code = otp["code"]
+    uses = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{otp['credential_id']}_uses"
+    )
+
+    # In through the door, back out to the van, and in again five minutes later.
+    first = await call(hass, "submit", {"scope_id": scope_id, "code": code})
+    freezer.tick(timedelta(minutes=2))
+    second = await call(hass, "submit", {"scope_id": scope_id, "code": code})
+    await hass.async_block_till_done()
+
+    assert first["valid"] is True
+    assert first["in_grace_period"] is False
+    assert second["valid"] is True
+    assert second["in_grace_period"] is True
+    assert state_of(hass, TARGET).state == "on"
+
+    state = state_of(hass, uses)
+    assert state.state == "2"
+    assert state.attributes["uncounted_uses"] == 1
+    assert state.attributes["remaining_uses"] == 0
+
+    # Past the window, the single use it was given has gone.
+    await hass.services.async_call(
+        "input_boolean", "turn_off", {"entity_id": TARGET}, blocking=True
+    )
+    freezer.tick(timedelta(minutes=4))
+    lapsed = await call(hass, "submit", {"scope_id": scope_id, "code": code})
+    await hass.async_block_till_done()
+
+    assert lapsed["valid"] is False
+    assert lapsed["reason"] == RejectionReason.MAX_USES_REACHED
+    assert state_of(hass, TARGET).state == "off"
 
 
 async def test_test_code_reports_without_acting(hass: HomeAssistant, entry):

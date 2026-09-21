@@ -20,13 +20,14 @@ from custom_components.hyper_passcode.const import (
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
+    GraceMode,
     Outcome,
     RejectionReason,
     Source,
     StoreMethod,
 )
 from custom_components.hyper_passcode.models import Policy
-from tests.helpers import set_number, state_of
+from tests.helpers import set_number, set_select, state_of
 
 
 async def add_scope(hass: HomeAssistant, entry, **fields) -> str:
@@ -439,6 +440,8 @@ async def test_editing_a_code_keeps_its_use_count(hass: HomeAssistant, entry):
     assert result["type"] is FlowResultType.FORM
 
     await set_number(hass, "number.cleaner_max_uses", 5)
+    await set_number(hass, "number.cleaner_re_entry_grace_period", 300)
+    await set_select(hass, "select.cleaner_re_entry_grace_window", "sliding")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -452,6 +455,8 @@ async def test_editing_a_code_keeps_its_use_count(hass: HomeAssistant, entry):
     # Set through the code's own entity, and left alone by an edit that cannot show
     # it any more.
     assert credential.policy.max_uses == 5
+    assert credential.policy.grace_period_seconds == 300
+    assert credential.policy.grace_mode is GraceMode.SLIDING
     # Editing configuration must not reset history.
     assert credential.use_count == 1
     # And the original code still works.

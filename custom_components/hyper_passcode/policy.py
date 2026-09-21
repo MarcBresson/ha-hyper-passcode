@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 
-from .const import RejectionReason
+from .const import GraceMode, RejectionReason
 from .models import Credential
 
 if TYPE_CHECKING:
@@ -56,9 +56,21 @@ def evaluate(
     if not _all_entities_on(hass, policy.condition_entities):
         return RejectionReason.CONDITION_FAILED
 
-    if policy.max_uses is not None and credential.use_count >= policy.max_uses:
+    # is_within_grace is checked last only because it can never reject -- a grace
+    # period only ever permits -- so there is nothing to ask when the limit is not
+    # reached anyway. Whether a use is *counted* is a separate question, decided for
+    # every use in _evaluate_submission.
+    if (
+        policy.max_uses is not None
+        and credential.counted_uses >= policy.max_uses
+        and not is_within_grace(credential, policy, now)
+    ):
         return RejectionReason.MAX_USES_REACHED
 
+    # Below the grace period, deliberately: a cooldown still bites during one. The
+    # two settings pull against each other -- grace says "come straight back and it
+    # is free", a cooldown says "not yet" -- and a code carrying both gets the
+    # stricter answer.
     if _is_rate_limited(credential, policy, now):
         return RejectionReason.RATE_LIMITED
 
@@ -73,6 +85,37 @@ def _all_entities_on(hass: HomeAssistant, entity_ids: list[str]) -> bool:
     treated as permission.
     """
     return all(hass.states.is_state(entity_id, STATE_ON) for entity_id in entity_ids)
+
+
+def is_within_grace(credential: Credential, policy: Policy, now: datetime) -> bool:
+    """Whether a use right now is exempt from ``max_uses``.
+
+    The re-entry grace period is for the delivery driver who has to come back out
+    through the door they were just let through, or the cleaner who fetches something
+    from the car: inside the window it is all one visit, so it is one use.
+
+    The window is anchored on the last *counted* use in ``fixed`` mode and on the last
+    use of any kind in ``sliding`` mode. That is the whole difference between them,
+    and why a sliding window stays open for as long as the gaps stay short while a
+    fixed one cannot be walked forward.
+
+    Deliberately false when there is no use limit. Nothing needs exempting without
+    one, and exempting uses anyway would quietly bank an allowance against a limit set
+    later. Both that guard and the "is it even switched on" one live here rather than
+    at the call sites, so this function means exactly "this use is exempt" and the
+    verdict cannot disagree with the counting.
+    """
+    if policy.max_uses is None or not policy.grace_period_seconds:
+        return False
+
+    anchor = (
+        credential.last_used
+        if policy.grace_mode is GraceMode.SLIDING
+        else credential.last_counted_use
+    )
+    if anchor is None:
+        return False
+    return now - anchor < timedelta(seconds=policy.grace_period_seconds)
 
 
 def _is_rate_limited(credential: Credential, policy: Policy, now: datetime) -> bool:

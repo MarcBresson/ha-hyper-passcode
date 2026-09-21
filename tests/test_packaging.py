@@ -101,9 +101,21 @@ def test_every_entity_translation_key_exists(translations):
         "generate_delivery_code",
         "clear_validity_window",
     }
+    assert set(entity["select"]) == {"grace_mode"}
     assert set(entity["datetime"]) == {"valid_from", "valid_until"}
     assert set(entity["text"]) == {"notes", "tags"}
     assert set(entity["event"]) == {"code"}
+
+
+def test_every_grace_mode_has_a_label(translations):
+    # The dropdown's option labels are the only place the difference between the two
+    # modes is explained at the point it is chosen, so an untranslated one leaves the
+    # user picking between a bare "fixed" and a bare "sliding".
+    from custom_components.hyper_passcode.const import GraceMode
+
+    assert set(translations["entity"]["select"]["grace_mode"]["state"]) == {
+        str(mode) for mode in GraceMode
+    }
 
 
 def test_every_repair_issue_is_described(translations):

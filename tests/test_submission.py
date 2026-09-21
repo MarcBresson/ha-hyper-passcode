@@ -13,6 +13,7 @@ from custom_components.hyper_passcode.const import (
     DOMAIN,
     EVENT_SUBMISSION,
     EventType,
+    GraceMode,
     Outcome,
     RejectionReason,
     Source,
@@ -82,6 +83,111 @@ async def test_a_one_time_code_works_exactly_once(hass: HomeAssistant, coordinat
     assert second.reason is RejectionReason.MAX_USES_REACHED
     assert len(actions) == 1
     assert credential.use_count == 1
+
+
+async def test_a_one_time_code_lets_the_driver_back_in_during_its_grace_period(
+    hass: HomeAssistant, coordinator, freezer
+):
+    scope = await make_scope_with_action(coordinator)
+    credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300
+    )
+    actions = async_capture_events(hass, ACTION_EVENT)
+
+    first = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    freezer.tick(timedelta(minutes=3))
+    second = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    assert first.valid is True
+    assert second.valid is True
+    assert second.in_grace is True
+    # A free use is a real use: the door opens again.
+    assert len(actions) == 2
+    assert credential.use_count == 2
+    assert credential.uncounted_uses == 1
+    assert credential.counted_uses == 1
+
+    # And once the window has run out, the one use it was given is gone.
+    freezer.tick(timedelta(minutes=3))
+    third = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    assert third.valid is False
+    assert third.reason is RejectionReason.MAX_USES_REACHED
+
+
+async def test_a_sliding_grace_window_keeps_a_code_open_while_the_gaps_stay_short(
+    hass: HomeAssistant, coordinator, freezer
+):
+    scope = await make_scope_with_action(coordinator)
+    credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300
+    )
+    policy = credential.policy.to_dict()
+    policy["grace_mode"] = str(GraceMode.SLIDING)
+    await coordinator.async_update_credential(
+        credential.credential_id, {"policy": policy}
+    )
+
+    for _ in range(3):
+        assert (
+            await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+        ).valid
+        freezer.tick(timedelta(minutes=3))
+
+    # Three uses of a one-time code, because each re-entry pushed the window out.
+    assert credential.use_count == 3
+    assert credential.counted_uses == 1
+
+    # Let the gap exceed the window and it closes.
+    freezer.tick(timedelta(minutes=3))
+    lapsed = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    assert lapsed.reason is RejectionReason.MAX_USES_REACHED
+
+
+async def test_an_uncounted_use_still_reaches_the_audit_log_and_the_uses_sensor(
+    hass: HomeAssistant, coordinator, freezer
+):
+    scope = await make_scope_with_action(coordinator)
+    _credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300, label="Delivery"
+    )
+    await hass.async_block_till_done()
+
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    freezer.tick(timedelta(minutes=1))
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    # Both entries are on the record: the exemption is about the allowance, not
+    # about hiding that somebody came through the door.
+    assert sum(1 for row in coordinator.data.audit if row.outcome is Outcome.VALID) == 2
+
+    state = state_of(hass, "sensor.delivery_uses")
+    assert state.state == "2"
+    assert state.attributes["uncounted_uses"] == 1
+    assert state.attributes["remaining_uses"] == 0
+    assert state.attributes["grace_period_seconds"] == 300
+
+
+async def test_testing_a_code_inside_its_grace_period_records_nothing(
+    hass: HomeAssistant, coordinator, freezer
+):
+    scope = await make_scope_with_action(coordinator)
+    credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300
+    )
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    freezer.tick(timedelta(minutes=1))
+
+    result = await coordinator.async_submit(
+        scope.scope_id, code, Source.SERVICE, dry_run=True
+    )
+
+    # A dry run reports the grace without consuming it.
+    assert result.valid is True
+    assert result.in_grace is True
+    assert credential.use_count == 1
+    assert credential.uncounted_uses == 0
 
 
 async def test_the_use_is_counted_even_when_the_action_fails(

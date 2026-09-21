@@ -66,7 +66,7 @@ from .exceptions import (
     WeakCodeError,
 )
 from .models import AuditEntry, Credential, Grant, Policy, Scope
-from .policy import evaluate
+from .policy import evaluate, is_within_grace
 from .store import HyperPasscodeStore, StoredData
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +99,11 @@ class SubmissionResult:
     credential_id: str | None = None
     label: str | None = None
     person: str | None = None
+    #: Whether this use fell inside the credential's re-entry grace period, and so is
+    #: exempt from ``max_uses``. Decided while evaluating and carried here rather than
+    #: worked out again when the use is recorded, so the two cannot drift apart: one
+    #: instant, one effective policy, one answer.
+    in_grace: bool = False
 
     @property
     def event_type(self) -> EventType:
@@ -117,6 +122,7 @@ class SubmissionResult:
             "credential_id": self.credential_id,
             "label": self.label,
             "person": self.person,
+            "in_grace_period": self.in_grace,
         }
 
 
@@ -435,7 +441,7 @@ class HyperPasscodeCoordinator:
 
         if result.valid:
             credential = self.get_credential(result.credential_id)  # type: ignore[arg-type]
-            credential.record_use(now)
+            credential.record_use(now, counted=not result.in_grace)
             credential.updated_at = now
             # Set before _reset_failures, which dispatches the scope update the
             # last-used sensor reads synchronously.
@@ -489,6 +495,13 @@ class HyperPasscodeCoordinator:
             credential_id=credential.credential_id,
             label=credential.label,
             person=credential.owner,
+            # policy_for is the same resolution evaluate does internally, so a
+            # per-grant override is honoured on both sides by construction. Asked on
+            # the dry-run path too: it reads without mutating, and it lets the "Test a
+            # code" page say the use would have been free.
+            in_grace=is_within_grace(
+                credential, credential.policy_for(scope.scope_id), now
+            ),
         )
 
     def _lookup(self, code: str) -> Credential | None:
@@ -897,6 +910,7 @@ class HyperPasscodeCoordinator:
         valid_until: datetime | None = None,
         duration: timedelta | None = None,
         max_uses: int = 1,
+        grace_period_seconds: int | None = None,
         length: int | None = None,
         keep_viewable: bool = True,
     ) -> tuple[Credential, str]:
@@ -904,6 +918,12 @@ class HyperPasscodeCoordinator:
 
         Defaults to viewable, because a delivery code you cannot read back is of no
         use to the person handing it over.
+
+        ``grace_period_seconds`` is the one-time code's answer to the driver who has
+        to come straight back out through the door. The window it opens is always a
+        fixed one: a sliding window puts no upper bound on how long a single-use code
+        stays alive, which is not something this helper should be able to hand out.
+        Anyone wanting that can switch the code's own mode afterwards.
         """
         now = dt_util.utcnow()
         start = valid_from or now
@@ -919,6 +939,7 @@ class HyperPasscodeCoordinator:
                 valid_from=valid_from,
                 valid_until=valid_until,
                 max_uses=max_uses,
+                grace_period_seconds=grace_period_seconds,
             ),
         )
 

@@ -28,6 +28,7 @@ from .const import (
     ATTR_SCOPE_ID,
     ATTR_SOURCE,
     ATTR_TAGS,
+    DEFAULT_GRACE_MODE,
     DOMAIN,
     SERVICE_CLEAR_BUFFER,
     SERVICE_CREATE_CODE,
@@ -39,6 +40,7 @@ from .const import (
     SERVICE_SUBMIT_KEY,
     SERVICE_TEST_CODE,
     CodeType,
+    GraceMode,
     Source,
 )
 from .coordinator import HyperPasscodeCoordinator
@@ -63,6 +65,11 @@ POLICY_FIELDS: dict[Any, Any] = {
     vol.Optional("uses_per_hour"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("uses_per_day"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("cooldown_seconds"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+    vol.Optional("grace_period_seconds"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+    # No ``default=`` on either of these. UPDATE_POLICY_FIELDS is derived from this
+    # dict, and a default there would make every update_code call that left the mode
+    # out silently reset it. create_code's default comes from _policy_from_call.
+    vol.Optional("grace_mode"): vol.Coerce(GraceMode),
     vol.Optional("allowed_sources"): vol.All(cv.ensure_list, [cv.string]),
 }
 
@@ -119,6 +126,9 @@ CREATE_OTP_SCHEMA = vol.Schema(
         vol.Optional("valid_until"): cv.datetime,
         vol.Optional("duration"): cv.positive_time_period,
         vol.Optional("max_uses", default=1): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Optional("grace_period_seconds"): vol.All(
+            vol.Coerce(int), vol.Range(min=0)
+        ),
         vol.Optional("length"): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("keep_viewable", default=True): cv.boolean,
     }
@@ -207,6 +217,8 @@ def _policy_from_call(data: dict[str, Any]) -> Policy:
         uses_per_hour=data.get("uses_per_hour"),
         uses_per_day=data.get("uses_per_day"),
         cooldown_seconds=data.get("cooldown_seconds"),
+        grace_period_seconds=data.get("grace_period_seconds"),
+        grace_mode=GraceMode(data.get("grace_mode") or DEFAULT_GRACE_MODE),
         allowed_sources=list(data.get("allowed_sources") or []),
     )
 
@@ -287,6 +299,7 @@ def async_register_services(hass: HomeAssistant) -> None:
             valid_until=_to_utc(data.get("valid_until")),
             duration=data.get("duration"),
             max_uses=data["max_uses"],
+            grace_period_seconds=data.get("grace_period_seconds"),
             length=data.get("length"),
             keep_viewable=data["keep_viewable"],
         )
