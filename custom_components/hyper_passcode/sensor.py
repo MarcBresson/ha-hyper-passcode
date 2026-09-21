@@ -1,7 +1,5 @@
 """Sensors: per-scope activity and per-credential use counts."""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from homeassistant.components.sensor import (
@@ -13,7 +11,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HyperPasscodeConfigEntry
-from .const import ATTR_LABEL
+from .const import (
+    ATTR_CREDENTIAL_ID,
+    ATTR_LABEL,
+    ATTR_PERSON,
+    ATTR_REASON,
+    ATTR_SOURCE,
+    Outcome,
+    RejectionReason,
+)
 from .coordinator import HyperPasscodeCoordinator
 from .entity import (
     HyperPasscodeCredentialEntity,
@@ -22,6 +28,13 @@ from .entity import (
     async_add_scope_entities,
 )
 from .models import Credential, Scope
+
+#: Every state the last-result sensor can report. An enum sensor raises on anything
+#: outside its options, so this has to stay in step with ``RejectionReason``.
+RESULT_STATES: list[str] = [
+    str(Outcome.VALID),
+    *(str(reason) for reason in RejectionReason),
+]
 
 
 async def async_setup_entry(
@@ -36,7 +49,7 @@ async def async_setup_entry(
         entry,
         coordinator,
         async_add_entities,
-        [ScopeLastUsedSensor, ScopeFailedAttemptsSensor],
+        [ScopeLastUsedSensor, ScopeLastResultSensor, ScopeFailedAttemptsSensor],
     )
     async_add_credential_entities(
         hass, entry, coordinator, async_add_entities, [CredentialUsesSensor]
@@ -64,6 +77,62 @@ class ScopeLastUsedSensor(SensorEntity, HyperPasscodeScopeEntity):
     def extra_state_attributes(self) -> dict[str, str | None]:
         """Which credential it was."""
         return {ATTR_LABEL: self.coordinator.runtime(self.scope_id).last_label}
+
+
+class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
+    """The verdict on the last code submitted against this scope.
+
+    Where ``last_used`` says when a code was last *accepted*, this says what happened
+    on the last *attempt*, whatever it came from -- the keypad, an action, a webhook
+    or the "Test a code" page.
+
+    It deliberately covers dry runs too, and for them it is the only trace there is:
+    a test counts no failure, trips no lockout and writes no audit row, so this
+    sensor's history is what a run of ``unknown_code`` verdicts shows up in.
+    """
+
+    _attr_translation_key = "last_result"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_icon = "mdi:clipboard-check-outline"
+    # No state class and no unit: both are rejected on an enum sensor.
+
+    def __init__(self, coordinator: HyperPasscodeCoordinator, scope: Scope) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, scope)
+        self._attr_unique_id = f"{scope.scope_id}_last_result"
+        self._attr_options = RESULT_STATES
+
+    @property
+    def native_value(self) -> str | None:
+        """The verdict, or None until a code has been submitted.
+
+        An enum sensor raises on a state outside its options, so a refusal that
+        somehow carries no reason degrades to unknown rather than taking the entity
+        down with it.
+        """
+        result = self.coordinator.runtime(self.scope_id).last_result
+        if result is None:
+            return None
+        if result.valid:
+            return str(Outcome.VALID)
+        return str(result.reason) if result.reason else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Which code it was, why it was refused, and whether it was for real."""
+        runtime = self.coordinator.runtime(self.scope_id)
+        result = runtime.last_result
+        if result is None:
+            return {}
+        return {
+            ATTR_REASON: str(result.reason) if result.reason else None,
+            ATTR_LABEL: result.label,
+            ATTR_CREDENTIAL_ID: result.credential_id,
+            ATTR_PERSON: result.person,
+            ATTR_SOURCE: result.source,
+            "dry_run": runtime.last_result_dry_run,
+            "tested_at": runtime.last_result_at,
+        }
 
 
 class ScopeFailedAttemptsSensor(SensorEntity, HyperPasscodeScopeEntity):

@@ -39,6 +39,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     TextSelector,
     TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .const import (
@@ -62,7 +63,9 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
+    Source,
 )
+from .coordinator import SubmissionResult
 from .exceptions import CodeCollisionError, WeakCodeError
 from .models import Policy, Scope
 
@@ -74,8 +77,35 @@ ATTR_KEEP_VIEWABLE = "keep_viewable"
 ATTR_OWNER = "owner"
 ATTR_SCHEDULE_ENTITIES = "schedule_entities"
 ATTR_CONDITION_ENTITIES = "condition_entities"
+ATTR_SCOPE_ID = "scope_id"
+ATTR_SOURCE = "source"
+ATTR_DRY_RUN = "dry_run"
 
 TITLE = "HyperPasscode"
+
+#: What the test page can submit as. ``unknown`` is left out: it is what the engine
+#: uses for a submission with no stated origin, not something worth testing as.
+TESTABLE_SOURCES = [str(source) for source in Source if source is not Source.UNKNOWN]
+
+
+def _describe(result: SubmissionResult, dry_run: bool) -> str:
+    """Put a submission's verdict into a sentence for the test page.
+
+    Built here rather than translated: it stitches together a credential's label and
+    its owner, which no static string can do. Never includes the code itself.
+    """
+    prefix = "Tested" if dry_run else "Submitted"
+    if result.valid:
+        who = f" as **{result.label}**" if result.label else ""
+        owner = f", owned by `{result.person}`" if result.person else ""
+        ran = " No actions were run." if dry_run else " The scope's actions ran."
+        return f"{prefix}: **accepted**{who}{owner}.{ran}"
+
+    reason = str(result.reason) if result.reason else "unknown"
+    # A refusal only names a code when one was actually matched; an unknown code
+    # has nothing to name.
+    matched = f" It matched **{result.label}**." if result.label else ""
+    return f"{prefix}: **refused** -- `{reason}`.{matched}"
 
 
 def _count(minimum: int, maximum: int) -> NumberSelector:
@@ -121,9 +151,17 @@ class HyperPasscodeConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HyperPasscodeOptionsFlow(OptionsFlow):
-    """Edit the integration-level settings."""
+    """The integration-level settings, and the page for trying a code by hand."""
 
     async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose between the settings and the test page."""
+        return self.async_show_menu(
+            step_id="init", menu_options=["settings", "test_code"]
+        )
+
+    async def async_step_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Show and save the settings form."""
@@ -188,7 +226,86 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
                 ): BooleanSelector(),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="settings", data_schema=schema)
+
+    async def async_step_test_code(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Try a code against a scope and say what the engine made of it.
+
+        This is the only place a code can be typed into Home Assistant by hand. It is
+        a flow step rather than a ``text`` entity for one reason: setting an entity
+        goes through ``text.set_value``, and a service call fires ``call_service``
+        carrying its whole ``service_data``, which the recorder keeps by default. A
+        flow's input never becomes an event, so the code stays out of the database.
+
+        The step re-shows itself after every submission instead of finishing, so
+        several codes can be tried in a row. It never creates an entry, so the
+        options are untouched and the integration is never reloaded.
+        """
+        coordinator = self.config_entry.runtime_data
+        if not coordinator.scopes:
+            return self.async_abort(reason="no_scopes")
+
+        if user_input is None:
+            return self._test_form(None, None, "Nothing submitted yet.")
+
+        if not (code := str(user_input.get(ATTR_CODE) or "").strip()):
+            return self._test_form(
+                user_input, {ATTR_CODE: "empty_code"}, "Nothing submitted yet."
+            )
+
+        dry_run = bool(user_input[ATTR_DRY_RUN])
+        result = await coordinator.async_submit(
+            user_input[ATTR_SCOPE_ID],
+            code,
+            user_input[ATTR_SOURCE],
+            dry_run=dry_run,
+            # A flow carries no Context for the admin who opened it. The submission
+            # is recorded with its source either way, so the audit log still says
+            # where it came from.
+        )
+        return self._test_form(user_input, None, _describe(result, dry_run))
+
+    def _test_form(
+        self,
+        user_input: Mapping[str, Any] | None,
+        errors: dict[str, str] | None,
+        result: str,
+    ) -> ConfigFlowResult:
+        """Redraw the test page, carrying everything forward except the code.
+
+        The code is never defaulted back in. Echoing it would put it on screen for
+        whoever walks past next, and the verdict already names the code it matched.
+        """
+        current = user_input or {}
+        scope_options = [
+            SelectOptionDict(value=scope_id, label=scope.name)
+            for scope_id, scope in self.config_entry.runtime_data.scopes.items()
+        ]
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    ATTR_SCOPE_ID,
+                    default=current.get(ATTR_SCOPE_ID, scope_options[0]["value"]),
+                ): SelectSelector(SelectSelectorConfig(options=scope_options)),
+                vol.Optional(ATTR_CODE): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Required(
+                    ATTR_SOURCE, default=current.get(ATTR_SOURCE, str(Source.UI))
+                ): SelectSelector(SelectSelectorConfig(options=TESTABLE_SOURCES)),
+                vol.Required(
+                    ATTR_DRY_RUN, default=current.get(ATTR_DRY_RUN, True)
+                ): BooleanSelector(),
+            }
+        )
+        return self.async_show_form(
+            step_id="test_code",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"result": result},
+        )
 
 
 def _scope_schema(current: Mapping[str, Any] | None = None) -> vol.Schema:

@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 import pytest
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
@@ -12,6 +13,7 @@ from custom_components.hyper_passcode.const import (
     DOMAIN,
     EVENT_SUBMISSION,
     EventType,
+    Outcome,
     RejectionReason,
     Source,
 )
@@ -118,6 +120,54 @@ async def test_test_code_records_nothing_and_runs_nothing(
     assert result.valid is True
     assert credential.use_count == 0
     assert not actions
+    assert not coordinator.data.audit
+
+
+async def test_the_last_result_sensor_follows_every_submission(
+    hass: HomeAssistant, coordinator
+):
+    # It is not limited to the "Test a code" page: a keypad entry moves it too, and
+    # that is what makes it the scope's "what happened last" reading.
+    scope = await make_scope_with_action(coordinator)
+    _credential, code = await coordinator.async_create_credential(
+        label="Household", scope_ids=[scope.scope_id]
+    )
+    await hass.async_block_till_done()
+    assert state_of(hass, "sensor.front_door_last_result").state == STATE_UNKNOWN
+
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    state = state_of(hass, "sensor.front_door_last_result")
+    assert state.state == str(Outcome.VALID)
+    assert state.attributes["label"] == "Household"
+    assert state.attributes["source"] == str(Source.KEYPAD)
+    assert state.attributes["dry_run"] is False
+
+    await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    state = state_of(hass, "sensor.front_door_last_result")
+    assert state.state == str(RejectionReason.UNKNOWN_CODE)
+    assert state.attributes["label"] is None
+
+
+async def test_a_dry_run_leaves_its_verdict_on_the_last_result_sensor(
+    hass: HomeAssistant, coordinator
+):
+    # The one thing a dry run does record. Without it a test would leave no trace at
+    # all, and a surface that checks codes without counting failures needs one.
+    scope = await make_scope_with_action(coordinator)
+    _credential, code = await coordinator.async_create_credential(
+        label="Household", scope_ids=[scope.scope_id]
+    )
+
+    await coordinator.async_submit(scope.scope_id, code, Source.SERVICE, dry_run=True)
+    await hass.async_block_till_done()
+
+    state = state_of(hass, "sensor.front_door_last_result")
+    assert state.state == str(Outcome.VALID)
+    assert state.attributes["dry_run"] is True
     assert not coordinator.data.audit
 
 

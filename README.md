@@ -67,6 +67,7 @@ Read-only:
 |---|---|---|
 | `event.<scope>_code` | scope | Fires on every submission, with the outcome and reason |
 | `sensor.<scope>_last_used` | scope | When a code was last accepted, and which one |
+| `sensor.<scope>_last_result` | scope | Verdict on the last attempt, with the reason, the code it matched and whether it was only a test |
 | `sensor.<scope>_failed_attempts` | scope | Consecutive failures since the last success |
 | `binary_sensor.<scope>_lockout` | scope | On while the scope is refusing submissions |
 | `sensor.<code>_uses` | code | Lifetime use count, with remaining uses and window as attributes |
@@ -175,6 +176,26 @@ data:
   code: "495162"
   source: keypad
 ```
+
+#### From the integration page
+
+Settings → Devices & Services → HyperPasscode → **Configure** → **Test a code** gives you a
+page for trying a code by hand. Pick a scope, type the code, and it tells you what the engine
+made of it — accepted, or refused with the reason.
+
+Three things about it are worth knowing:
+
+- **"Test only" is on by default.** With it on, nothing happens beyond the verdict: no use is
+  counted, no failure counts towards the lockout, nothing is written to the audit log and the
+  scope's actions do not run. Turn it off and the page really submits.
+- **The source field matters.** A code restricted with `allowed_sources` only works from the
+  inputs it names, so a code pinned to the wall keypad will read `wrong_source` until you set
+  the source to `keypad`.
+- **The page stays open.** It redraws with the verdict after each submission, so you can work
+  through several codes without reopening it. The code field is cleared every time and never
+  filled back in.
+
+Whichever way it was submitted, the verdict lands on `sensor.<scope>_last_result`.
 
 ### One-time codes for deliveries
 
@@ -342,13 +363,51 @@ a trade-off, and the UI says so.
 If Home Assistant is down, no code works. That comes with validating codes in software, and
 it's why a lock with its own keypad is still a reasonable backup for a front door.
 
+### Where typed codes end up
+
+A code submitted with `hyper_passcode.submit` or `hyper_passcode.test_code` is in your
+recorder database. Not because of anything this integration does — every service call fires
+a `call_service` event carrying its data, and the recorder keeps those by default. Script and
+automation traces store service data too. If that matters to you:
+
+```yaml
+recorder:
+  exclude:
+    event_types:
+      - call_service
+```
+
+The "Test a code" page is the one input surface without this problem, and that is why it is a
+configuration page rather than a text entity on each scope's device. A flow's input travels
+over the websocket into memory and never becomes an event, so nothing about it is recorded.
+The verdict it publishes to `sensor.<scope>_last_result` names the code's label, never the
+code.
+
+### Who can submit from the page
+
+The page is admin-only, because Home Assistant's configuration screens are. That is the right
+default for something that can open a door: with "Test only" unticked it runs whatever the
+scope's default actions run, and a wrong code counts towards the same lockout that protects
+your physical keypad — so an admin fumbling codes in the UI can lock out the front door.
+
+It also means the page is not a household keypad. The Lovelace keypad card on the roadmap is
+what that needs.
+
+### Testing is not rate limited
+
+"Test only" counts no failures, trips no lockout and writes no audit row. That is the point,
+but it also makes the page an oracle: an admin can work through the code space without
+leaving any of the usual traces. `sensor.<scope>_last_result` is the trace — a run of
+`unknown_code` verdicts in its history is what that looks like.
+
 ## Roadmap
 
 The engine is done and tested. What's left is mostly what sits on top of it.
 
 Planned
 
-- A Lovelace keypad card, kiosk-friendly, with no code echoed back on screen
+- A Lovelace keypad card, kiosk-friendly, with no code echoed back on screen. This is what
+  household entry from the UI needs: the "Test a code" page is admin-only
 - A management card, mainly for a readable audit view and bulk operations; scopes and
   codes themselves are already managed from the integration page and their own entities
 - A WebSocket API behind the cards, admin-only

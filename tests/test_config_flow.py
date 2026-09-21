@@ -4,19 +4,24 @@ The subentry flow is what puts an "Add scope" button on the integration page, so
 these tests drive it the way the UI does rather than calling the coordinator.
 """
 
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import async_capture_events
 
 from custom_components.hyper_passcode.const import (
     DEFAULT_LOCKOUT_THRESHOLD,
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_SCOPE,
+    Outcome,
+    RejectionReason,
     Source,
 )
-from tests.helpers import set_number
+from custom_components.hyper_passcode.models import Policy
+from tests.helpers import set_number, state_of
 
 
 async def add_scope(hass: HomeAssistant, entry, **fields) -> str:
@@ -165,8 +170,44 @@ async def test_deleting_a_scope_removes_its_entities(hass: HomeAssistant, entry)
     assert scope_id not in entry.runtime_data.scopes
 
 
-async def test_options_flow_saves_settings(hass: HomeAssistant, entry):
+async def open_options(
+    hass: HomeAssistant, entry, step: str
+) -> config_entries.ConfigFlowResult:
+    """Open the options flow and pick one of its menu entries."""
     result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    return await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": step}
+    )
+
+
+async def submit_test_code(
+    hass: HomeAssistant, flow_id: str, **fields
+) -> config_entries.ConfigFlowResult:
+    """Fill in the "Test a code" page once."""
+    result = await hass.config_entries.options.async_configure(flow_id, fields)
+    await hass.async_block_till_done()
+    return result
+
+
+def verdict(result: config_entries.ConfigFlowResult) -> str:
+    """The sentence the test page reports back."""
+    placeholders = result["description_placeholders"]
+    assert placeholders is not None
+    return placeholders["result"]
+
+
+async def test_options_flow_offers_settings_and_the_test_page(
+    hass: HomeAssistant, entry
+):
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["settings", "test_code"]
+
+
+async def test_options_flow_saves_settings(hass: HomeAssistant, entry):
+    result = await open_options(hass, entry, "settings")
     assert result["type"] is FlowResultType.FORM
 
     result = await hass.config_entries.options.async_configure(
@@ -410,3 +451,234 @@ async def test_deleting_a_code_removes_its_entities_and_secret(
     assert (
         registry.async_get_entity_id("sensor", DOMAIN, f"{credential_id}_uses") is None
     )
+
+
+# ----------------------------------------------------------------------
+# The "Test a code" page
+# ----------------------------------------------------------------------
+#
+# This is the only place a code can be typed into Home Assistant by hand, and it
+# sits behind the hub's Configure button rather than on a scope's device page.
+# What matters is that the safe mode is genuinely inert, that the real mode is
+# genuinely the real path, and that the page never writes options or echoes a code
+# back onto the screen.
+
+
+async def test_the_test_page_needs_a_scope_to_submit_against(
+    hass: HomeAssistant, entry
+):
+    result = await open_options(hass, entry, "test_code")
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_scopes"
+
+
+async def test_a_tested_code_reports_its_verdict_and_changes_nothing(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(
+        hass, entry, default_actions=[{"event": "front_door_opened"}]
+    )
+    credential_id, code = await add_code(hass, entry, scope_ids=[scope_id])
+    coordinator = entry.runtime_data
+    opened = async_capture_events(hass, "front_door_opened")
+
+    result = await open_options(hass, entry, "test_code")
+    result = await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code=code,
+        source=str(Source.UI),
+        dry_run=True,
+    )
+
+    # The page loops rather than finishing, so several codes can be tried in a row.
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "test_code"
+    assert "accepted" in verdict(result)
+    assert "Cleaner" in verdict(result)
+
+    assert coordinator.credentials[credential_id].use_count == 0
+    assert coordinator.data.audit == []
+    assert coordinator.runtime(scope_id).last_used is None
+    assert opened == []
+
+
+async def test_a_tested_code_still_lands_on_the_result_sensor(
+    hass: HomeAssistant, entry
+):
+    # A dry run writes no audit row, so this sensor is the only trace it leaves.
+    scope_id = await add_scope(hass, entry)
+    await add_code(hass, entry, scope_ids=[scope_id])
+
+    result = await open_options(hass, entry, "test_code")
+    await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code="000111",
+        source=str(Source.UI),
+        dry_run=True,
+    )
+
+    state = state_of(hass, "sensor.front_door_last_result")
+    assert state.state == str(RejectionReason.UNKNOWN_CODE)
+    assert state.attributes["dry_run"] is True
+    assert state.attributes["source"] == str(Source.UI)
+
+
+async def test_a_tested_code_does_not_count_towards_the_lockout(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(hass, entry)
+    coordinator = entry.runtime_data
+    await set_number(hass, "number.front_door_lockout_threshold", 2)
+
+    result = await open_options(hass, entry, "test_code")
+    for _ in range(3):
+        await submit_test_code(
+            hass,
+            result["flow_id"],
+            scope_id=scope_id,
+            code="000111",
+            source=str(Source.UI),
+            dry_run=True,
+        )
+
+    assert coordinator.runtime(scope_id).failed_attempts == 0
+    assert not coordinator.is_locked_out(scope_id)
+
+
+async def test_submitting_for_real_counts_the_use_and_runs_the_actions(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(
+        hass, entry, default_actions=[{"event": "front_door_opened"}]
+    )
+    credential_id, code = await add_code(hass, entry, scope_ids=[scope_id])
+    coordinator = entry.runtime_data
+    opened = async_capture_events(hass, "front_door_opened")
+
+    result = await open_options(hass, entry, "test_code")
+    result = await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code=code,
+        source=str(Source.UI),
+        dry_run=False,
+    )
+
+    assert "accepted" in verdict(result)
+    assert coordinator.credentials[credential_id].use_count == 1
+    assert len(coordinator.data.audit) == 1
+    assert len(opened) == 1
+
+    state = state_of(hass, "sensor.front_door_last_result")
+    assert state.state == str(Outcome.VALID)
+    assert state.attributes["dry_run"] is False
+
+
+async def test_the_source_field_decides_an_allowed_sources_verdict(
+    hass: HomeAssistant, entry
+):
+    # The whole point of the field: a code pinned to the wall keypad can only be
+    # seen working by submitting as the keypad.
+    scope_id = await add_scope(hass, entry)
+    coordinator = entry.runtime_data
+    _credential, code = await coordinator.async_create_credential(
+        label="Keypad only",
+        scope_ids=[scope_id],
+        policy=Policy(allowed_sources=[str(Source.KEYPAD)]),
+    )
+    await hass.async_block_till_done()
+
+    result = await open_options(hass, entry, "test_code")
+    result = await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code=code,
+        source=str(Source.UI),
+        dry_run=True,
+    )
+    assert str(RejectionReason.WRONG_SOURCE) in verdict(result)
+
+    result = await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code=code,
+        source=str(Source.KEYPAD),
+        dry_run=True,
+    )
+    assert "accepted" in verdict(result)
+
+
+async def test_an_empty_code_is_refused_without_submitting_anything(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(hass, entry)
+    coordinator = entry.runtime_data
+
+    result = await open_options(hass, entry, "test_code")
+    result = await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code="   ",
+        source=str(Source.UI),
+        dry_run=True,
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"code": "empty_code"}
+    assert coordinator.runtime(scope_id).last_result is None
+
+
+async def test_the_page_never_echoes_the_code_back(hass: HomeAssistant, entry):
+    scope_id = await add_scope(hass, entry)
+    _credential_id, code = await add_code(hass, entry, scope_ids=[scope_id])
+
+    result = await open_options(hass, entry, "test_code")
+    result = await submit_test_code(
+        hass,
+        result["flow_id"],
+        scope_id=scope_id,
+        code=code,
+        source=str(Source.UI),
+        dry_run=True,
+    )
+
+    assert code not in verdict(result)
+    # Nor as the field's default, which would put it straight back on screen.
+    schema = result["data_schema"]
+    assert schema is not None
+    code_key = next(key for key in schema.schema if str(key) == "code")
+    assert code_key.default is vol.UNDEFINED
+
+
+async def test_the_page_never_writes_options_or_reloads_the_entry(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(hass, entry)
+    await add_code(hass, entry, scope_ids=[scope_id])
+    coordinator = entry.runtime_data
+    before = dict(entry.options)
+
+    result = await open_options(hass, entry, "test_code")
+    for _ in range(2):
+        await submit_test_code(
+            hass,
+            result["flow_id"],
+            scope_id=scope_id,
+            code="000111",
+            source=str(Source.UI),
+            dry_run=True,
+        )
+
+    assert dict(entry.options) == before
+    # A reload would replace runtime_data, throwing away lockout counters and any
+    # half-typed keypad code along with it.
+    assert entry.runtime_data is coordinator

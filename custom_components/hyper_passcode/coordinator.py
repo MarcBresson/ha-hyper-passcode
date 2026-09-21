@@ -118,6 +118,10 @@ class ScopeRuntime:
     Lockout deliberately does not survive a restart: a reboot is a plausible recovery
     path for a locked-out household, and persisting it would mostly serve to lock
     people out for longer than intended.
+
+    The last-result fields are what the scope's "Last result" sensor reads. They are
+    here rather than in the store for the same reason: a verdict is a live reading,
+    and the audit log already keeps the history of everything that was not a dry run.
     """
 
     failed_attempts: int = 0
@@ -126,6 +130,9 @@ class ScopeRuntime:
     cancel_buffer_timer: CALLBACK_TYPE | None = None
     last_used: datetime | None = None
     last_label: str | None = None
+    last_result: SubmissionResult | None = None
+    last_result_at: datetime | None = None
+    last_result_dry_run: bool = False
     script: Script | None = None
     script_source: list[dict[str, Any]] = field(default_factory=list)
 
@@ -401,15 +408,32 @@ class HyperPasscodeCoordinator:
     ) -> SubmissionResult:
         """Validate ``code`` against ``scope_id`` and act on the outcome.
 
-        With ``dry_run`` the code is evaluated but nothing is recorded, no action runs
-        and no failure is counted -- this backs the ``test_code`` service.
+        With ``dry_run`` the code is evaluated but no use is counted, no failure is
+        registered, no audit row is written and no action runs -- this backs the
+        ``test_code`` service and the "Test a code" page.
+
+        The one thing a dry run does leave behind is the verdict, on the scope's
+        "Last result" sensor. Without it a test would leave no trace whatsoever, and
+        a surface that evaluates codes without counting failures or tripping the
+        lockout is an unrate-limited guessing oracle. That sensor's history is what
+        makes somebody working through the code space visible.
         """
         scope = self.get_scope(scope_id)
         now = dt_util.utcnow()
 
         result = self._evaluate_submission(scope, code, source, now)
 
+        # Before the branches below: both _register_failure and _reset_failures
+        # dispatch the scope update that the sensor reads synchronously, so the
+        # verdict has to already be in place by the time they run.
+        runtime = self.runtime(scope_id)
+        runtime.last_result = result
+        runtime.last_result_at = now
+        runtime.last_result_dry_run = dry_run
+
         if dry_run:
+            # Nothing else dispatches on this path.
+            async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope_id))
             return result
 
         if result.valid:
@@ -418,7 +442,6 @@ class HyperPasscodeCoordinator:
             credential.updated_at = now
             # Set before _reset_failures, which dispatches the scope update the
             # last-used sensor reads synchronously.
-            runtime = self.runtime(scope_id)
             runtime.last_used = now
             runtime.last_label = credential.label
             self._reset_failures(scope_id)

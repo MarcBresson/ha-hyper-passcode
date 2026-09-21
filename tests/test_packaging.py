@@ -81,13 +81,18 @@ def test_every_settings_field_is_translated(translations):
         for name, value in vars(const).items()
         if name.startswith("CONF_") and isinstance(value, str)
     }
-    documented = set(translations["options"]["step"]["init"]["data"])
+    documented = set(translations["options"]["step"]["settings"]["data"])
     assert setting_keys == documented, "an integration setting is missing a label"
 
 
 def test_every_entity_translation_key_exists(translations):
     entity = translations["entity"]
-    assert set(entity["sensor"]) == {"last_used", "failed_attempts", "uses"}
+    assert set(entity["sensor"]) == {
+        "last_used",
+        "last_result",
+        "failed_attempts",
+        "uses",
+    }
     assert set(entity["binary_sensor"]) == {"lockout"}
     assert set(entity["switch"]) == {"enabled", "keep_viewable"}
     assert set(entity["button"]) == {
@@ -119,13 +124,24 @@ def test_device_automation_types_are_translated(translations):
 
 
 def test_every_rejection_reason_can_be_reported(translations):
-    # Reasons surface as raw values on the event entity, so they only need to be
-    # stable strings -- but the event types they map to must all be declared.
-    from custom_components.hyper_passcode.const import EventType
+    from custom_components.hyper_passcode.const import (
+        EventType,
+        Outcome,
+        RejectionReason,
+    )
 
+    # On the event entity reasons are raw values, so only the event types they map
+    # to have to be declared.
     declared = set(
         translations["entity"]["event"]["code"]["state_attributes"]["event_type"][
             "state"
         ]
     )
     assert {str(event_type) for event_type in EventType} == declared
+
+    # On the last-result sensor they are enum states, and an enum sensor raises on a
+    # state outside its options -- so a new reason with no entry here would take the
+    # entity down rather than merely show a bare key.
+    assert set(translations["entity"]["sensor"]["last_result"]["state"]) == {
+        str(Outcome.VALID)
+    } | {str(reason) for reason in RejectionReason}

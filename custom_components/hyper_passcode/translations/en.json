@@ -113,6 +113,28 @@
   "options": {
     "step": {
       "init": {
+        "title": "HyperPasscode",
+        "menu_options": {
+          "settings": "Settings",
+          "test_code": "Test a code"
+        }
+      },
+      "test_code": {
+        "title": "Test a code",
+        "description": "{result}",
+        "data": {
+          "scope_id": "Scope",
+          "code": "Code",
+          "source": "Source",
+          "dry_run": "Test only"
+        },
+        "data_description": {
+          "code": "Never shown again once submitted, and never echoed back into this field.",
+          "source": "Which input a credential restricted with \"allowed sources\" should be judged as coming from.",
+          "dry_run": "On, the code is only checked. Turn it off and this really submits: the use is counted, a failure counts towards the lockout that protects your keypad, and the scope's actions run."
+        }
+      },
+      "settings": {
         "title": "HyperPasscode settings",
         "data": {
           "reject_weak_codes": "Reject weak codes",
@@ -133,6 +155,12 @@
           "log_failed_plaintext": "Off by default: a failed attempt is usually a typo of a real code, so recording it would leak that code into your logs."
         }
       }
+    },
+    "error": {
+      "empty_code": "Type a code to submit."
+    },
+    "abort": {
+      "no_scopes": "There are no scopes yet. Add one from the integration page, then there will be something to submit a code against."
     }
   },
   "device_automation": {
@@ -171,7 +199,25 @@
     "sensor": {
       "last_used": { "name": "Last used" },
       "failed_attempts": { "name": "Failed attempts" },
-      "uses": { "name": "Uses" }
+      "uses": { "name": "Uses" },
+      "last_result": {
+        "name": "Last result",
+        "state": {
+          "valid": "Accepted",
+          "unknown_code": "Unknown code",
+          "no_grant": "Not granted on this scope",
+          "disabled": "Code disabled",
+          "revoked": "Code revoked",
+          "wrong_source": "Wrong source",
+          "not_yet_valid": "Not yet valid",
+          "expired": "Expired",
+          "out_of_schedule": "Outside its schedule",
+          "condition_failed": "A condition was not met",
+          "max_uses_reached": "Use limit reached",
+          "rate_limited": "Rate limited",
+          "locked_out": "Locked out"
+        }
+      }
     },
     "binary_sensor": {
       "lockout": { "name": "Lockout" }
