@@ -61,15 +61,41 @@ Monitoring
 
 ### Entities
 
+Read-only:
+
 | Entity | Per | Purpose |
 |---|---|---|
 | `event.<scope>_code` | scope | Fires on every submission, with the outcome and reason |
 | `sensor.<scope>_last_used` | scope | When a code was last accepted, and which one |
 | `sensor.<scope>_failed_attempts` | scope | Consecutive failures since the last success |
 | `binary_sensor.<scope>_lockout` | scope | On while the scope is refusing submissions |
-| `button.<scope>_generate_delivery_code` | scope | Issues a single-use code valid for two hours |
 | `sensor.<code>_uses` | code | Lifetime use count, with remaining uses and window as attributes |
+
+Settings, editable from the device page, a dashboard or an automation:
+
+| Entity | Per | Purpose |
+|---|---|---|
+| `number.<scope>_code_length` | scope | Auto-submit at this length. `0` waits for a terminator |
+| `number.<scope>_inter_key_timeout` | scope | Seconds before a half-typed code is dropped |
+| `number.<scope>_lockout_threshold` | scope | Failures before lockout. `0` disables it |
+| `number.<scope>_lockout_duration` | scope | How long a lockout lasts |
+| `number.<code>_max_uses` | code | Lifetime limit. `0` is unlimited |
+| `number.<code>_uses_per_hour` | code | Rolling hourly limit. `0` is unlimited |
+| `number.<code>_uses_per_day` | code | Rolling 24-hour limit. `0` is unlimited |
+| `number.<code>_cooldown` | code | Minimum seconds between uses |
+| `datetime.<code>_valid_from` | code | Start of the validity window |
+| `datetime.<code>_valid_until` | code | End of the validity window |
+| `text.<code>_notes` | code | Free text |
+| `text.<code>_tags` | code | Comma-separated, and what `revoke_all` filters on |
 | `switch.<code>_enabled` | code | Turns a code off without deleting it |
+| `switch.<code>_keep_viewable` | code | Off discards the stored copy of the code |
+
+Actions:
+
+| Entity | Per | Purpose |
+|---|---|---|
+| `button.<scope>_generate_delivery_code` | scope | Issues a single-use code valid for two hours |
+| `button.<code>_clear_validity_window` | code | Removes both ends of the window at once |
 
 ## Installing
 
@@ -84,15 +110,16 @@ from Settings → Devices & Services.
 A scope is a thing codes are entered against. It shows up as a device with its own entities.
 
 Go to Settings → Devices & Services → HyperPasscode and press **Add scope**. You give it a
-name, and optionally:
+name, and optionally an icon, terminator keys, and default actions to run whenever a valid
+code is entered here — which is what lets the common case work without any automation at
+all.
 
-- default actions to run whenever a valid code is entered here, which is what lets the
-  common case work without any automation at all
-- a fixed code length, terminator keys and an inter-key timeout, for physical keypads
-- how many failed attempts lock this scope out, and for how long
+Everything else about a scope is a number entity on its device: the code length,
+the inter-key timeout, and the two lockout settings. Open the scope's device page to
+change them, or set them from an automation like any other number.
 
-Scopes can be edited or deleted from the same page afterwards. Editing one takes effect
-immediately and leaves its lockout counters and any half-typed code alone.
+Scopes can be edited or deleted from the integration page afterwards. Editing one takes
+effect immediately and leaves its lockout counters and any half-typed code alone.
 
 Everything below is also exposed as an action, so a scope can be created from Developer
 Tools → Actions or from an automation instead:
@@ -113,11 +140,16 @@ Note the returned `scope_id`, which the remaining steps need.
 
 Press **Add code** on the same page. Give it a name, pick which scopes it opens, and leave
 the code blank to have one generated. The next step shows you the code — that is the only
-time you see it, unless you tick "Keep code viewable".
+time you see it, unless you tick "Keep code viewable". That tick box is the one thing that
+has to be decided up front: a code nobody kept a copy of cannot be recovered later.
 
-The same dialog carries the validity rules: a start and end time, a maximum number of uses,
-schedules and conditions. Codes can be edited or deleted from the integration page, and
-editing one never touches its use count or history.
+The dialog also takes the schedule and condition entities, since those are entity pickers.
+The rest of the validity rules — the window, the use limits, the cooldown — are entities on
+the new code's own device, so "extend the guest code to Sunday" is a datetime you set rather
+than a dialog you reopen.
+
+Codes can be edited or deleted from the integration page, and editing one never touches its
+use count or history.
 
 As an action:
 
@@ -193,6 +225,23 @@ Rules combine, and all of them have to pass:
 | `cooldown_seconds` | Minimum gap between uses |
 | `allowed_sources` | Restrict a code to the wall keypad but not the web UI, for instance |
 
+Everything in that table except the entity lists and `allowed_sources` is an entity on the
+code's device, so a rule can be read in a template and changed from an automation. A zero
+means "no limit" there, because a number entity has no way to be blank. The two dates are
+the exception: a datetime entity can report that a bound is absent but has nothing to set
+it back to, so the **Clear validity window** button on the same device is what removes them.
+
+All of it is also reachable as an action, which is what to use if you have turned per-code
+entities off. Only the fields you fill in are touched, and an empty one removes that rule:
+
+```yaml
+action: hyper_passcode.update_code
+data:
+  credential_id: "<credential_id>"
+  valid_until: null
+  uses_per_day: 3
+```
+
 A condition entity that is missing, unavailable or unknown counts as off. An unreadable
 condition is never treated as permission to enter.
 
@@ -236,7 +285,7 @@ half-typed code doesn't linger.
 |---|---|---|
 | Reject weak codes | on | Refuses repeated digits, sequential runs and well-known codes, both for typed codes and generated ones |
 | Weak code blocklist | empty | Extra values to treat as weak, such as your house number |
-| Create entities per credential | on | Adds a use counter and an enable switch per credential. Turn it off if you have many |
+| Create entities per credential | on | Adds the use counter, switches, dates and limits per credential. Turn it off if you have many, but then those settings are only reachable through actions |
 | Default code length | 6 | Starting point for the generator |
 | Failed attempts before lockout | 5 | `0` disables lockout. Can be overridden per scope |
 | Lockout duration | 300s | Can be overridden per scope |
@@ -244,8 +293,10 @@ half-typed code doesn't linger.
 | Log what was typed on failure | off | Off by default, because a failed attempt is usually a typo of a real code, and recording it would leak that code into your logs |
 
 These are the defaults for the whole integration. The two lockout settings can be overridden
-per scope from that scope's dialog: leave them blank there to inherit the values above, or
-fill them in to give one door a stricter threshold than the rest of the house.
+per scope: every scope's `number.<scope>_lockout_threshold` and `number.<scope>_lockout_duration`
+report the values above until something writes to them, and the first write pins an override
+for that door alone. Changing the integration-wide value still moves every scope that has
+never been written to.
 
 Collision refusal isn't configurable. Two identical active codes in one scope would make the
 audit log unattributable, which defeats the point of the monitoring.
@@ -256,6 +307,14 @@ Scopes and codes each become a device. A code granted on exactly one scope is li
 that scope's device, so the scope's page lists the codes that open it rather than leaving
 both kinds in one flat list. A code granted on several stays top level: grants are
 many-to-many, and nesting it under one of its scopes would hide the others.
+
+Almost every setting sits on one of those devices as an entity rather than in a dialog.
+The add and edit forms keep only what an entity cannot express: the name, the code itself,
+which scopes it opens, the action sequence, and the schedule and condition pickers.
+Everything else — thresholds, limits, dates, notes, tags — is a number, datetime, text or
+switch entity, which means it is readable in a template, settable from an automation, and
+recorded in history. Writing one goes straight back to the subentry it came from, so a value
+set from a dashboard persists exactly as a dialog field did.
 
 ## How things are stored
 
@@ -291,7 +350,7 @@ Planned
 
 - A Lovelace keypad card, kiosk-friendly, with no code echoed back on screen
 - A management card, mainly for a readable audit view and bulk operations; scopes and
-  codes themselves are already managed from the integration page
+  codes themselves are already managed from the integration page and their own entities
 - A WebSocket API behind the cards, admin-only
 - Blueprints for the common wiring: keypad to `submit_key`, code used to a notification with
   a camera snapshot, repeated failures to arming the alarm

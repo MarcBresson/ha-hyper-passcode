@@ -3,6 +3,13 @@
 HyperPasscode is a single hub entry; scopes and credentials are managed in the UI
 rather than through the config flow. The options flow carries the integration-level
 settings described in the README.
+
+These dialogs only carry what an entity cannot: identity, the code itself, which
+scopes it opens, and the entity pickers. Every threshold, limit and free-text field
+lives on the scope's or the code's own device instead, where it can be read in a
+template and changed without opening the integration page. That means the forms here
+must never write a field they no longer show -- both edit steps merge their input
+onto what is already stored rather than rebuilding it.
 """
 
 from collections.abc import Mapping
@@ -21,7 +28,6 @@ from homeassistant.const import CONF_ICON, CONF_NAME
 from homeassistant.helpers.selector import (
     ActionSelector,
     BooleanSelector,
-    DateTimeSelector,
     EntitySelector,
     EntitySelectorConfig,
     IconSelector,
@@ -46,7 +52,6 @@ from .const import (
     CONF_WEAK_CODE_BLOCKLIST,
     DEFAULT_AUDIT_LOG_SIZE,
     DEFAULT_CODE_LENGTH,
-    DEFAULT_INTER_KEY_TIMEOUT,
     DEFAULT_LOCKOUT_DURATION,
     DEFAULT_LOCKOUT_THRESHOLD,
     DEFAULT_LOG_FAILED_PLAINTEXT,
@@ -59,22 +64,14 @@ from .const import (
     SUBENTRY_TYPE_SCOPE,
 )
 from .exceptions import CodeCollisionError, WeakCodeError
-from .helpers import to_utc as _to_utc
 from .models import Policy, Scope
 
 ATTR_DEFAULT_ACTIONS = "default_actions"
-ATTR_CODE_LENGTH = "code_length"
 ATTR_TERMINATOR_KEYS = "terminator_keys"
-ATTR_INTER_KEY_TIMEOUT = "inter_key_timeout"
 ATTR_CODE = "code"
 ATTR_SCOPE_IDS = "scope_ids"
 ATTR_KEEP_VIEWABLE = "keep_viewable"
 ATTR_OWNER = "owner"
-ATTR_TAGS = "tags"
-ATTR_NOTES = "notes"
-ATTR_VALID_FROM = "valid_from"
-ATTR_VALID_UNTIL = "valid_until"
-ATTR_MAX_USES = "max_uses"
 ATTR_SCHEDULE_ENTITIES = "schedule_entities"
 ATTR_CONDITION_ENTITIES = "condition_entities"
 
@@ -197,66 +194,46 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
 def _scope_schema(current: Mapping[str, Any] | None = None) -> vol.Schema:
     """Build the add/edit form for one scope.
 
-    ``lockout_threshold`` and ``lockout_duration`` are optional here on purpose:
-    leaving them blank falls back to the integration-wide setting, and filling them
-    in overrides it for this scope alone.
+    Only what no entity can express. The code length, the inter-key timeout and the
+    two lockout settings are number entities on the scope's own device, so a door's
+    threshold can be changed from a dashboard rather than from here.
     """
     current = current or {}
 
-    def default(key: str, fallback: Any = vol.UNDEFINED) -> Any:
-        value = current.get(key)
-        return fallback if value is None else value
-
     return vol.Schema(
         {
-            vol.Required(CONF_NAME, default=default(CONF_NAME)): TextSelector(),
+            vol.Required(
+                CONF_NAME, default=current.get(CONF_NAME, vol.UNDEFINED)
+            ): TextSelector(),
             vol.Optional(
                 CONF_ICON, default=current.get(CONF_ICON) or "mdi:dialpad"
             ): IconSelector(),
             vol.Optional(
                 ATTR_DEFAULT_ACTIONS, default=current.get(ATTR_DEFAULT_ACTIONS) or []
             ): ActionSelector(),
-            vol.Optional(ATTR_CODE_LENGTH, default=default(ATTR_CODE_LENGTH)): _count(
-                1, 64
-            ),
             vol.Optional(
                 ATTR_TERMINATOR_KEYS,
                 default=current.get(ATTR_TERMINATOR_KEYS)
                 or list(DEFAULT_TERMINATOR_KEYS),
             ): TextSelector(TextSelectorConfig(multiple=True)),
-            vol.Optional(
-                ATTR_INTER_KEY_TIMEOUT,
-                default=current.get(ATTR_INTER_KEY_TIMEOUT)
-                or DEFAULT_INTER_KEY_TIMEOUT,
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=1, max=300, step=0.5, mode=NumberSelectorMode.BOX
-                )
-            ),
-            vol.Optional(
-                CONF_LOCKOUT_THRESHOLD, default=default(CONF_LOCKOUT_THRESHOLD)
-            ): _count(0, 100),
-            vol.Optional(
-                CONF_LOCKOUT_DURATION, default=default(CONF_LOCKOUT_DURATION)
-            ): _count(0, 86400),
         }
     )
 
 
-def _scope_entry(user_input: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def _scope_entry(
+    user_input: dict[str, Any], current: Mapping[str, Any] | None = None
+) -> tuple[str, dict[str, Any]]:
     """Turn form input into a subentry title and payload.
+
+    ``current`` is the scope's stored data, and the form is laid over it rather than
+    replacing it: the fields this dialog no longer shows are owned by the scope's
+    number entities, and an edit here must leave them exactly as they were.
 
     Routed through ``Scope`` so a scope created here and one created through the
     ``create_scope`` action are stored in exactly the same shape.
     """
-    data = dict(user_input)
+    data = {**(current or {}), **user_input}
     name = data.pop(CONF_NAME)
-
-    for key in (ATTR_CODE_LENGTH, CONF_LOCKOUT_THRESHOLD, CONF_LOCKOUT_DURATION):
-        if data.get(key) is not None:
-            data[key] = int(data[key])
-    if data.get(ATTR_INTER_KEY_TIMEOUT) is not None:
-        data[ATTR_INTER_KEY_TIMEOUT] = float(data[ATTR_INTER_KEY_TIMEOUT])
 
     scope = Scope.from_dict({**data, "scope_id": "", "name": name})
     payload = scope.to_dict()
@@ -283,7 +260,7 @@ class ScopeSubentryFlow(ConfigSubentryFlow):
         """Edit an existing scope."""
         subentry = self._get_reconfigure_subentry()
         if user_input is not None:
-            title, data = _scope_entry(user_input)
+            title, data = _scope_entry(user_input, subentry.data)
             return self.async_update_and_abort(
                 self._get_entry(), subentry, title=title, data=data
             )
@@ -302,11 +279,16 @@ def _credential_schema(
 ) -> vol.Schema:
     """Build the add/edit form for one credential.
 
+    Only what no entity can express. The validity window, the use limits, the notes
+    and the tags are all entities on the code's own device, so a guest code can be
+    extended from a dashboard instead of through this dialog.
+
     When editing, the code field is left blank and means "leave the code alone" --
     a code that is not viewable cannot be shown back, so there is nothing to
-    pre-fill it with.
+    pre-fill it with. ``keep_viewable`` only appears when adding, because it decides
+    whether a readable copy of the code is kept at the one moment the code exists in
+    clear. Afterwards it is a switch, and one that can only be turned off.
     """
-    _ = editing  # the step id already tells the UI which wording to use
     current = current or {}
     policy = dict(current.get("policy") or {})
 
@@ -322,39 +304,35 @@ def _credential_schema(
         vol.Optional(
             ATTR_SCOPE_IDS, default=current.get(ATTR_SCOPE_IDS) or []
         ): SelectSelector(SelectSelectorConfig(options=scope_options, multiple=True)),
-        vol.Optional(
-            ATTR_KEEP_VIEWABLE, default=current.get(ATTR_KEEP_VIEWABLE, False)
-        ): BooleanSelector(),
-        vol.Optional(ATTR_OWNER, default=default(current.get(ATTR_OWNER))): (
-            EntitySelector(EntitySelectorConfig(domain="person"))
-        ),
-        vol.Optional(ATTR_TAGS, default=current.get(ATTR_TAGS) or []): TextSelector(
-            TextSelectorConfig(multiple=True)
-        ),
-        vol.Optional(ATTR_NOTES, default=current.get(ATTR_NOTES) or ""): TextSelector(
-            TextSelectorConfig(multiline=True)
-        ),
-        vol.Optional(
-            ATTR_VALID_FROM, default=default(policy.get(ATTR_VALID_FROM))
-        ): DateTimeSelector(),
-        vol.Optional(
-            ATTR_VALID_UNTIL, default=default(policy.get(ATTR_VALID_UNTIL))
-        ): DateTimeSelector(),
-        vol.Optional(ATTR_MAX_USES, default=default(policy.get(ATTR_MAX_USES))): _count(
-            1, 100000
-        ),
-        vol.Optional(
-            ATTR_SCHEDULE_ENTITIES, default=policy.get(ATTR_SCHEDULE_ENTITIES) or []
-        ): EntitySelector(EntitySelectorConfig(domain="schedule", multiple=True)),
-        vol.Optional(
-            ATTR_CONDITION_ENTITIES, default=policy.get(ATTR_CONDITION_ENTITIES) or []
-        ): EntitySelector(
-            EntitySelectorConfig(
-                domain=["binary_sensor", "switch", "input_boolean", "calendar"],
-                multiple=True,
-            )
-        ),
     }
+
+    if not editing:
+        schema[
+            vol.Optional(
+                ATTR_KEEP_VIEWABLE, default=current.get(ATTR_KEEP_VIEWABLE, False)
+            )
+        ] = BooleanSelector()
+
+    schema.update(
+        {
+            vol.Optional(ATTR_OWNER, default=default(current.get(ATTR_OWNER))): (
+                EntitySelector(EntitySelectorConfig(domain="person"))
+            ),
+            vol.Optional(
+                ATTR_SCHEDULE_ENTITIES,
+                default=policy.get(ATTR_SCHEDULE_ENTITIES) or [],
+            ): EntitySelector(EntitySelectorConfig(domain="schedule", multiple=True)),
+            vol.Optional(
+                ATTR_CONDITION_ENTITIES,
+                default=policy.get(ATTR_CONDITION_ENTITIES) or [],
+            ): EntitySelector(
+                EntitySelectorConfig(
+                    domain=["binary_sensor", "switch", "input_boolean", "calendar"],
+                    multiple=True,
+                )
+            ),
+        }
+    )
     return vol.Schema(schema)
 
 
@@ -378,19 +356,17 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
         return self._get_entry().runtime_data
 
     @staticmethod
-    def _policy(user_input: Mapping[str, Any]) -> Policy:
-        """Build a policy from the flat form fields."""
-        return Policy(
-            valid_from=_to_utc(user_input.get(ATTR_VALID_FROM)),
-            valid_until=_to_utc(user_input.get(ATTR_VALID_UNTIL)),
-            schedule_entities=list(user_input.get(ATTR_SCHEDULE_ENTITIES) or []),
-            condition_entities=list(user_input.get(ATTR_CONDITION_ENTITIES) or []),
-            max_uses=(
-                int(user_input[ATTR_MAX_USES])
-                if user_input.get(ATTR_MAX_USES) is not None
-                else None
-            ),
-        )
+    def _policy(user_input: Mapping[str, Any], current: Policy | None = None) -> Policy:
+        """Lay the two entity pickers over the policy the credential already has.
+
+        Everything else in a policy -- the window, the limits, the cooldown, the
+        allowed sources -- is set through entities or actions, so an edit here must
+        carry it across untouched rather than reset it to the form's idea of empty.
+        """
+        policy = Policy.from_dict(current.to_dict()) if current else Policy()
+        policy.schedule_entities = list(user_input.get(ATTR_SCHEDULE_ENTITIES) or [])
+        policy.condition_entities = list(user_input.get(ATTR_CONDITION_ENTITIES) or [])
+        return policy
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -407,8 +383,6 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
                     scope_ids=list(user_input.get(ATTR_SCOPE_IDS) or []),
                     keep_viewable=user_input.get(ATTR_KEEP_VIEWABLE, False),
                     owner=user_input.get(ATTR_OWNER),
-                    tags=list(user_input.get(ATTR_TAGS) or []),
-                    notes=user_input.get(ATTR_NOTES, ""),
                     policy=self._policy(user_input),
                     persist=False,
                 )
@@ -463,11 +437,10 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
             changes: dict[str, Any] = {
                 "label": user_input[CONF_NAME],
                 "scope_ids": list(user_input.get(ATTR_SCOPE_IDS) or []),
-                ATTR_KEEP_VIEWABLE: user_input.get(ATTR_KEEP_VIEWABLE, False),
                 ATTR_OWNER: user_input.get(ATTR_OWNER),
-                ATTR_TAGS: list(user_input.get(ATTR_TAGS) or []),
-                ATTR_NOTES: user_input.get(ATTR_NOTES, ""),
-                "policy": self._policy(user_input).to_dict(),
+                "policy": self._policy(
+                    user_input, coordinator.credentials[credential_id].policy
+                ).to_dict(),
             }
             if new_code := user_input.get(ATTR_CODE):
                 changes["code"] = new_code

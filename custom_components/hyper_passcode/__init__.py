@@ -15,9 +15,12 @@ from .store import HyperPasscodeStore
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.DATETIME,
     Platform.EVENT,
+    Platform.NUMBER,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TEXT,
 ]
 
 type HyperPasscodeConfigEntry = ConfigEntry[HyperPasscodeCoordinator]

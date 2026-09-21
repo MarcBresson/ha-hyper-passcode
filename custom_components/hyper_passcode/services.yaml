@@ -196,6 +196,89 @@ revoke:
       selector:
         text:
 
+update_code:
+  fields:
+    credential_id:
+      required: true
+      selector:
+        text:
+    label:
+      selector:
+        text:
+    code:
+      example: "495162"
+      selector:
+        text:
+    scope_ids:
+      selector:
+        text:
+          multiple: true
+    keep_viewable:
+      selector:
+        boolean:
+    owner:
+      selector:
+        entity:
+          filter:
+            domain: person
+    tags:
+      selector:
+        text:
+          multiple: true
+    notes:
+      selector:
+        text:
+          multiline: true
+    valid_from:
+      selector:
+        datetime:
+    valid_until:
+      selector:
+        datetime:
+    schedule_entities:
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: schedule
+    condition_entities:
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: [binary_sensor, switch, input_boolean, calendar, schedule]
+    max_uses:
+      selector:
+        number:
+          min: 1
+          max: 100000
+          mode: box
+    uses_per_hour:
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    uses_per_day:
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    cooldown_seconds:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    allowed_sources:
+      selector:
+        select:
+          multiple: true
+          custom_value: true
+          options: [ui, keypad, service, webhook, unknown]
+
 delete_code:
   fields:
     credential_id:

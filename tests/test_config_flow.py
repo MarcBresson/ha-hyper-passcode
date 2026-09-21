@@ -16,6 +16,7 @@ from custom_components.hyper_passcode.const import (
     SUBENTRY_TYPE_SCOPE,
     Source,
 )
+from tests.helpers import set_number
 
 
 async def add_scope(hass: HomeAssistant, entry, **fields) -> str:
@@ -89,10 +90,13 @@ async def test_adding_a_scope_creates_its_entities(hass: HomeAssistant, entry):
 
 
 async def test_scope_lockout_is_configured_per_scope(hass: HomeAssistant, entry):
-    scope_id = await add_scope(hass, entry, lockout_threshold=2, lockout_duration=45)
+    # The dialog no longer carries these; the scope's number entities do.
+    scope_id = await add_scope(hass, entry)
     coordinator = entry.runtime_data
-    scope = coordinator.scopes[scope_id]
+    await set_number(hass, "number.front_door_lockout_threshold", 2)
+    await set_number(hass, "number.front_door_lockout_duration", 45)
 
+    scope = coordinator.scopes[scope_id]
     assert coordinator.lockout_threshold(scope) == 2
     assert coordinator.lockout_duration(scope) == 45
 
@@ -117,8 +121,9 @@ async def test_omitting_lockout_falls_back_to_the_integration_setting(
 async def test_reconfiguring_a_scope_keeps_its_runtime_state(
     hass: HomeAssistant, entry
 ):
-    scope_id = await add_scope(hass, entry, lockout_threshold=9)
+    scope_id = await add_scope(hass, entry)
     coordinator = entry.runtime_data
+    await set_number(hass, "number.front_door_lockout_threshold", 9)
 
     # Something worth preserving across an edit.
     await coordinator.async_submit(scope_id, "000111", Source.KEYPAD)
@@ -134,14 +139,16 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
     assert result["type"] is FlowResultType.FORM
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "Back Door", "lockout_threshold": 3}
+        result["flow_id"], {"name": "Back Door"}
     )
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.ABORT
 
     scope = entry.runtime_data.scopes[scope_id]
     assert scope.name == "Back Door"
-    assert entry.runtime_data.lockout_threshold(scope) == 3
+    # The dialog does not show the lockout settings any more, so it must not wipe
+    # the override the number entity wrote either.
+    assert entry.runtime_data.lockout_threshold(scope) == 9
     # Editing a scope must not reset counters or half-typed codes.
     assert entry.runtime_data.runtime(scope_id).failed_attempts == 1
 
@@ -343,15 +350,19 @@ async def test_editing_a_code_keeps_its_use_count(hass: HomeAssistant, entry):
     )
     assert result["type"] is FlowResultType.FORM
 
+    await set_number(hass, "number.cleaner_max_uses", 5)
+
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {"name": "Weekly cleaner", "scope_ids": [scope_id], "max_uses": 5},
+        {"name": "Weekly cleaner", "scope_ids": [scope_id]},
     )
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.ABORT
 
     credential = entry.runtime_data.credentials[credential_id]
     assert credential.label == "Weekly cleaner"
+    # Set through the code's own entity, and left alone by an edit that cannot show
+    # it any more.
     assert credential.policy.max_uses == 5
     # Editing configuration must not reset history.
     assert credential.use_count == 1

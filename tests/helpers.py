@@ -14,3 +14,25 @@ def state_of(hass: HomeAssistant, entity_id: str | None) -> State:
     state = hass.states.get(entity_id)
     assert state is not None, f"{entity_id} has no state"
     return state
+
+
+async def set_number(hass: HomeAssistant, entity_id: str, value: float) -> None:
+    """Set a number entity the way the UI does, and wait for the write to land."""
+    await hass.services.async_call(
+        "number",
+        "set_value",
+        {"entity_id": entity_id, "value": value},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+
+async def set_text(hass: HomeAssistant, entity_id: str, value: str) -> None:
+    """Set a text entity the way the UI does."""
+    await hass.services.async_call(
+        "text",
+        "set_value",
+        {"entity_id": entity_id, "value": value},
+        blocking=True,
+    )
+    await hass.async_block_till_done()

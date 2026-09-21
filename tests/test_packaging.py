@@ -5,8 +5,6 @@ mistakes that are easy to make and invisible until a user hits them: a service w
 description in the UI, a settings field nobody translated, a manifest key HACS rejects.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 
@@ -91,9 +89,25 @@ def test_every_entity_translation_key_exists(translations):
     entity = translations["entity"]
     assert set(entity["sensor"]) == {"last_used", "failed_attempts", "uses"}
     assert set(entity["binary_sensor"]) == {"lockout"}
-    assert set(entity["switch"]) == {"enabled"}
-    assert set(entity["button"]) == {"generate_delivery_code"}
+    assert set(entity["switch"]) == {"enabled", "keep_viewable"}
+    assert set(entity["button"]) == {
+        "generate_delivery_code",
+        "clear_validity_window",
+    }
+    assert set(entity["datetime"]) == {"valid_from", "valid_until"}
+    assert set(entity["text"]) == {"notes", "tags"}
     assert set(entity["event"]) == {"code"}
+
+
+def test_every_editable_setting_entity_is_named(translations):
+    # These carry the settings that used to be dialog fields, so an untranslated one
+    # shows up on a device page as a bare key where a label used to be.
+    from custom_components.hyper_passcode import number
+
+    declared = {description.key for description in number.SCOPE_NUMBERS} | {
+        description.key for description in number.POLICY_NUMBERS
+    }
+    assert declared == set(translations["entity"]["number"])
 
 
 def test_device_automation_types_are_translated(translations):

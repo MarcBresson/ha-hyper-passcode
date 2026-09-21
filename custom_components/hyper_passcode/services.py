@@ -45,6 +45,7 @@ from .coordinator import HyperPasscodeCoordinator
 from .helpers import to_utc as _to_utc
 from .models import Policy
 
+SERVICE_UPDATE_CODE = "update_code"
 SERVICE_DELETE_CODE = "delete_code"
 SERVICE_REVOKE_ALL = "revoke_all"
 SERVICE_CREATE_SCOPE = "create_scope"
@@ -64,6 +65,18 @@ POLICY_FIELDS: dict[Any, Any] = {
     vol.Optional("cooldown_seconds"): vol.All(vol.Coerce(int), vol.Range(min=0)),
     vol.Optional("allowed_sources"): vol.All(cv.ensure_list, [cv.string]),
 }
+
+#: The same fields for an update, where ``null`` is how a rule is removed. Without
+#: this there would be no way to lift an expiry from YAML, since leaving a field out
+#: has to mean "leave it alone".
+UPDATE_POLICY_FIELDS: dict[Any, Any] = {
+    marker: vol.Any(None, validator) for marker, validator in POLICY_FIELDS.items()
+}
+
+#: Which of an update's fields belong to the policy rather than the credential.
+POLICY_FIELD_NAMES: frozenset[str] = frozenset(
+    str(marker.schema) for marker in POLICY_FIELDS
+)
 
 SUBMIT_SCHEMA = vol.Schema(
     {
@@ -112,6 +125,20 @@ CREATE_OTP_SCHEMA = vol.Schema(
 )
 
 CREDENTIAL_ONLY_SCHEMA = vol.Schema({vol.Required(ATTR_CREDENTIAL_ID): cv.string})
+
+UPDATE_CODE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CREDENTIAL_ID): cv.string,
+        vol.Optional(ATTR_LABEL): cv.string,
+        vol.Optional(ATTR_CODE): cv.string,
+        vol.Optional("scope_ids"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("keep_viewable"): cv.boolean,
+        vol.Optional("owner"): vol.Any(None, cv.entity_id),
+        vol.Optional(ATTR_TAGS): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("notes"): cv.string,
+        **UPDATE_POLICY_FIELDS,
+    }
+)
 
 SET_ENABLED_SCHEMA = vol.Schema(
     {
@@ -274,6 +301,31 @@ def async_register_services(hass: HomeAssistant) -> None:
         """Permanently disable a credential."""
         await _coordinator(hass).async_revoke(call.data[ATTR_CREDENTIAL_ID])
 
+    async def update_code(call: ServiceCall) -> None:
+        """Change a credential, leaving out whatever should stay as it is.
+
+        The counterpart to the code's entities, and the only way to reach these
+        settings when ``per_credential_entities`` is off. Only the fields actually
+        passed are touched, so a policy is edited rather than replaced.
+        """
+        coordinator = _coordinator(hass)
+        changes = dict(call.data)
+        credential_id = changes.pop(ATTR_CREDENTIAL_ID)
+        policy = coordinator.get_credential(credential_id).policy.to_dict()
+
+        rules = {key: changes.pop(key) for key in POLICY_FIELD_NAMES & set(changes)}
+        if rules:
+            for key, value in rules.items():
+                policy[key] = (
+                    _iso(_to_utc(value)) if isinstance(value, datetime) else value
+                )
+            changes["policy"] = policy
+
+        if ATTR_LABEL in changes:
+            changes["label"] = changes.pop(ATTR_LABEL)
+
+        await coordinator.async_update_credential(credential_id, changes)
+
     async def delete_code(call: ServiceCall) -> None:
         """Delete a credential outright."""
         await _coordinator(hass).async_delete_credential(call.data[ATTR_CREDENTIAL_ID])
@@ -330,6 +382,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         (SERVICE_CREATE_CODE, create_code, CREATE_CODE_SCHEMA, optional),
         (SERVICE_CREATE_OTP, create_otp, CREATE_OTP_SCHEMA, optional),
         (SERVICE_REVOKE, revoke, CREDENTIAL_ONLY_SCHEMA, None),
+        (SERVICE_UPDATE_CODE, update_code, UPDATE_CODE_SCHEMA, None),
         (SERVICE_DELETE_CODE, delete_code, CREDENTIAL_ONLY_SCHEMA, None),
         (SERVICE_SET_ENABLED, set_enabled, SET_ENABLED_SCHEMA, None),
         (SERVICE_REVOKE_ALL, revoke_all, REVOKE_ALL_SCHEMA, optional),

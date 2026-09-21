@@ -26,18 +26,13 @@
       "step": {
         "user": {
           "title": "Add code",
-          "description": "Leave the code blank to have one generated. You will be shown it on the next step.",
+          "description": "Leave the code blank to have one generated. You will be shown it on the next step.\n\nValidity dates, use limits, notes and tags are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
           "data": {
             "name": "Name",
             "code": "Code",
             "scope_ids": "Works on",
             "keep_viewable": "Keep code viewable",
             "owner": "Owner",
-            "tags": "Tags",
-            "notes": "Notes",
-            "valid_from": "Valid from",
-            "valid_until": "Valid until",
-            "max_uses": "Maximum uses",
             "schedule_entities": "Schedules",
             "condition_entities": "Conditions"
           },
@@ -45,13 +40,9 @@
             "name": "What this code is for, such as Cleaner or Grocery delivery.",
             "code": "Leave empty to generate one.",
             "scope_ids": "The scopes this code opens. A code with no scope cannot be used anywhere yet.",
-            "keep_viewable": "Stores the code in clear text so it can be read back and shared again. Without this it can only be regenerated.",
+            "keep_viewable": "Stores the code in clear text so it can be read back and shared again. Decide now: without it the code can only be regenerated, never recovered.",
             "owner": "The person this code belongs to. Their name then appears in the audit log and in automations.",
-            "tags": "Labels for filtering, and for revoking a whole group of codes at once.",
-            "valid_from": "Leave empty to make it usable straight away.",
-            "valid_until": "Leave empty for no expiry.",
-            "max_uses": "Lifetime limit. Set to 1 for a one-time code.",
-            "schedule_entities": "Schedule helpers that must all be on. These recur weekly, so pair them with the dates above for a date range.",
+            "schedule_entities": "Schedule helpers that must all be on. These recur weekly, so pair them with the code's 'Valid from' and 'Valid until' entities for a date range.",
             "condition_entities": "Any on/off entities that must all be on. Point one at a calendar to make the code live only during matching events."
           }
         },
@@ -61,26 +52,18 @@
         },
         "reconfigure": {
           "title": "Edit code",
-          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.",
+          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits, notes and tags live on this code's device, not in this dialog.",
           "data": {
             "name": "Name",
             "code": "New code",
             "scope_ids": "Works on",
-            "keep_viewable": "Keep code viewable",
             "owner": "Owner",
-            "tags": "Tags",
-            "notes": "Notes",
-            "valid_from": "Valid from",
-            "valid_until": "Valid until",
-            "max_uses": "Maximum uses",
             "schedule_entities": "Schedules",
             "condition_entities": "Conditions"
           },
           "data_description": {
             "code": "Leave empty to keep the current code.",
             "scope_ids": "The scopes this code opens.",
-            "keep_viewable": "Turning this off discards the stored copy of the code, so it can no longer be read back.",
-            "max_uses": "Counted against the uses already recorded, so lowering it below the current count retires the code.",
             "schedule_entities": "Schedule helpers that must all be on.",
             "condition_entities": "Any on/off entities that must all be on."
           }
@@ -98,24 +81,16 @@
       "step": {
         "user": {
           "title": "Add scope",
-          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.",
+          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.\n\nCode length, inter-key timeout and the lockout settings are number entities on that device, so they can be tuned without coming back here.",
           "data": {
             "name": "Name",
             "icon": "Icon",
             "default_actions": "Default actions",
-            "code_length": "Code length",
-            "terminator_keys": "Terminator keys",
-            "inter_key_timeout": "Inter-key timeout",
-            "lockout_threshold": "Failed attempts before lockout",
-            "lockout_duration": "Lockout duration"
+            "terminator_keys": "Terminator keys"
           },
           "data_description": {
             "default_actions": "Run whenever a valid code is entered here, so the common case needs no automation at all.",
-            "code_length": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key.",
-            "terminator_keys": "Keys that submit what has been typed so far, usually # or *.",
-            "inter_key_timeout": "Clear a half-typed code after this many seconds without a keystroke.",
-            "lockout_threshold": "Leave empty to use the integration-wide setting. Set to 0 to disable lockout for this scope.",
-            "lockout_duration": "How long this scope refuses codes once it locks out. Leave empty to use the integration-wide setting."
+            "terminator_keys": "Keys that submit what has been typed so far, usually # or *."
           }
         },
         "reconfigure": {
@@ -125,19 +100,11 @@
             "name": "Name",
             "icon": "Icon",
             "default_actions": "Default actions",
-            "code_length": "Code length",
-            "terminator_keys": "Terminator keys",
-            "inter_key_timeout": "Inter-key timeout",
-            "lockout_threshold": "Failed attempts before lockout",
-            "lockout_duration": "Lockout duration"
+            "terminator_keys": "Terminator keys"
           },
           "data_description": {
             "default_actions": "Run whenever a valid code is entered here.",
-            "code_length": "Submit automatically at this length. Leave empty to wait for a terminator key.",
-            "terminator_keys": "Keys that submit what has been typed so far.",
-            "inter_key_timeout": "Clear a half-typed code after this many seconds without a keystroke.",
-            "lockout_threshold": "Leave empty to use the integration-wide setting. Set to 0 to disable lockout for this scope.",
-            "lockout_duration": "How long this scope refuses codes once it locks out. Leave empty to use the integration-wide setting."
+            "terminator_keys": "Keys that submit what has been typed so far."
           }
         }
       }
@@ -160,7 +127,7 @@
         "data_description": {
           "reject_weak_codes": "Refuses repeated digits, sequential runs and well-known codes, for typed codes as well as generated ones.",
           "weak_code_blocklist": "Extra values to treat as weak, such as a house number or a birth year.",
-          "per_credential_entities": "Gives every credential its own use counter and enable switch. Turn this off if you have many credentials, or the entity list becomes unusable.",
+          "per_credential_entities": "Gives every credential its own use counter, switches, validity dates and use limits. Turn this off if you have many credentials, or the entity list becomes unusable -- but with it off those settings are only reachable through actions.",
           "lockout_threshold": "Set to 0 to disable lockout entirely.",
           "audit_log_size": "How many submissions to keep. Every submission also fires an event, so history is kept by the recorder regardless.",
           "log_failed_plaintext": "Off by default: a failed attempt is usually a typo of a real code, so recording it would leak that code into your logs."
@@ -210,10 +177,30 @@
       "lockout": { "name": "Lockout" }
     },
     "switch": {
-      "enabled": { "name": "Enabled" }
+      "enabled": { "name": "Enabled" },
+      "keep_viewable": { "name": "Keep viewable" }
     },
     "button": {
-      "generate_delivery_code": { "name": "Generate delivery code" }
+      "generate_delivery_code": { "name": "Generate delivery code" },
+      "clear_validity_window": { "name": "Clear validity window" }
+    },
+    "number": {
+      "code_length": { "name": "Code length" },
+      "inter_key_timeout": { "name": "Inter-key timeout" },
+      "lockout_threshold": { "name": "Lockout threshold" },
+      "lockout_duration": { "name": "Lockout duration" },
+      "max_uses": { "name": "Max uses" },
+      "uses_per_hour": { "name": "Uses per hour" },
+      "uses_per_day": { "name": "Uses per day" },
+      "cooldown_seconds": { "name": "Cooldown" }
+    },
+    "datetime": {
+      "valid_from": { "name": "Valid from" },
+      "valid_until": { "name": "Valid until" }
+    },
+    "text": {
+      "notes": { "name": "Notes" },
+      "tags": { "name": "Tags" }
     }
   },
   "services": {
@@ -296,6 +283,29 @@
         "credential_id": { "name": "Credential", "description": "The credential to revoke." }
       }
     },
+    "update_code": {
+      "name": "Update code",
+      "description": "Changes a credential. Only the fields you fill in are touched, and passing an empty value to one of the rules removes it. This is what reaches these settings when per-credential entities are turned off.",
+      "fields": {
+        "credential_id": { "name": "Credential", "description": "The credential to change." },
+        "label": { "name": "Label", "description": "A new name for this credential." },
+        "code": { "name": "Code", "description": "Replaces the code. Leave empty to keep the current one." },
+        "scope_ids": { "name": "Scopes", "description": "The scopes this code works on, replacing the current list." },
+        "keep_viewable": { "name": "Keep code viewable", "description": "Turning this off discards the stored copy of the code. Turning it on can only keep a code that is still stored." },
+        "owner": { "name": "Owner", "description": "The person this credential belongs to." },
+        "tags": { "name": "Tags", "description": "Labels for filtering and bulk revocation, replacing the current list." },
+        "notes": { "name": "Notes", "description": "Free text." },
+        "valid_from": { "name": "Valid from", "description": "Not usable before this moment. Leave empty to remove the bound." },
+        "valid_until": { "name": "Valid until", "description": "Not usable from this moment on. Leave empty to remove the expiry." },
+        "schedule_entities": { "name": "Schedules", "description": "Schedule helpers that must all be on." },
+        "condition_entities": { "name": "Conditions", "description": "Any on/off entities that must all be on." },
+        "max_uses": { "name": "Maximum uses", "description": "Lifetime limit. Leave empty for no limit." },
+        "uses_per_hour": { "name": "Uses per hour", "description": "Rolling hourly limit." },
+        "uses_per_day": { "name": "Uses per day", "description": "Rolling 24-hour limit." },
+        "cooldown_seconds": { "name": "Cooldown", "description": "Minimum gap between uses." },
+        "allowed_sources": { "name": "Allowed sources", "description": "Restricts where this code may be entered. Empty means anywhere." }
+      }
+    },
     "delete_code": {
       "name": "Delete code",
       "description": "Removes a credential and its entities outright.",
@@ -371,6 +381,9 @@
     },
     "weak_code": {
       "message": "That code was rejected as weak. Turn off 'Reject weak codes' in the integration settings to allow it."
+    },
+    "code_not_recoverable": {
+      "message": "The code for {label} is not stored anywhere in clear, so it cannot be made viewable again. Set a new code with 'Keep code viewable' on instead."
     }
   }
 }
