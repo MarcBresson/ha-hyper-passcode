@@ -92,6 +92,8 @@ def test_every_entity_translation_key_exists(translations):
         "last_result",
         "failed_attempts",
         "uses",
+        "code",
+        "store_method",
     }
     assert set(entity["binary_sensor"]) == {"lockout"}
     assert set(entity["switch"]) == {"enabled", "keep_viewable"}
@@ -102,6 +104,14 @@ def test_every_entity_translation_key_exists(translations):
     assert set(entity["datetime"]) == {"valid_from", "valid_until"}
     assert set(entity["text"]) == {"notes", "tags"}
     assert set(entity["event"]) == {"code"}
+
+
+def test_every_repair_issue_is_described(translations):
+    # A repair with no translation shows as a bare key in Settings > Repairs, which
+    # is worse than useless for something raised to warn about a leaked code.
+    from custom_components.hyper_passcode import coordinator
+
+    assert set(translations["issues"]) == {coordinator.ISSUE_TRANSLATION_KEY}
 
 
 def test_every_editable_setting_entity_is_named(translations):

@@ -1,4 +1,4 @@
-"""Sensors: per-scope activity and per-credential use counts."""
+"""Sensors: per-scope activity, and per-credential use counts and code readback."""
 
 from datetime import datetime
 
@@ -7,6 +7,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -19,6 +20,8 @@ from .const import (
     ATTR_SOURCE,
     Outcome,
     RejectionReason,
+    StoreMethod,
+    credential_code_unique_id,
 )
 from .coordinator import HyperPasscodeCoordinator
 from .entity import (
@@ -36,6 +39,9 @@ RESULT_STATES: list[str] = [
     *(str(reason) for reason in RejectionReason),
 ]
 
+#: The two forms a credential's secret can be held in, for the store-method sensor.
+STORE_METHOD_STATES: list[str] = [str(method) for method in StoreMethod]
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -52,7 +58,11 @@ async def async_setup_entry(
         [ScopeLastUsedSensor, ScopeLastResultSensor, ScopeFailedAttemptsSensor],
     )
     async_add_credential_entities(
-        hass, entry, coordinator, async_add_entities, [CredentialUsesSensor]
+        hass,
+        entry,
+        coordinator,
+        async_add_entities,
+        [CredentialUsesSensor, CredentialCodeSensor, CredentialStoreMethodSensor],
     )
 
 
@@ -199,3 +209,67 @@ class CredentialUsesSensor(SensorEntity, HyperPasscodeCredentialEntity):
             "tags": credential.tags,
             "last_used": credential.last_used,
         }
+
+
+class CredentialCodeSensor(SensorEntity, HyperPasscodeCredentialEntity):
+    """The code itself, for the credentials that were kept viewable.
+
+    This is the only way to read a code back after the add dialog has closed, which
+    is the whole point of "Keep code viewable". For every other credential there is
+    nothing to show -- only the lookup index was ever stored -- so the state is
+    unknown rather than a placeholder that could be mistaken for the code.
+
+    The state is a secret, so it lands in the recorder's history like any other. A
+    code that must not be written to the database is one to leave un-viewable.
+    """
+
+    _attr_translation_key = "code"
+    _attr_icon = "mdi:form-textbox-password"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, coordinator: HyperPasscodeCoordinator, credential: Credential
+    ) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, credential)
+        self._attr_unique_id = credential_code_unique_id(credential.credential_id)
+
+    @property
+    def native_value(self) -> str | None:
+        """The code in clear, or None when no readable copy is kept."""
+        credential = self.credential
+        if credential is None or not credential.keep_viewable:
+            return None
+        return credential.plaintext
+
+
+class CredentialStoreMethodSensor(SensorEntity, HyperPasscodeCredentialEntity):
+    """Whether this code is held in clear or only as a lookup index.
+
+    Reads ``plaintext`` while the code can be shown and ``hashed`` once it cannot,
+    so a dashboard can tell at a glance which codes are recoverable without having
+    to reason about the "Keep viewable" switch and the code sensor together.
+    """
+
+    _attr_translation_key = "store_method"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_icon = "mdi:database-lock-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, coordinator: HyperPasscodeCoordinator, credential: Credential
+    ) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, credential)
+        self._attr_unique_id = f"{credential.credential_id}_store_method"
+        self._attr_options = STORE_METHOD_STATES
+
+    @property
+    def native_value(self) -> str | None:
+        """Which of the two storage forms this credential is in."""
+        credential = self.credential
+        if credential is None:
+            return None
+        if credential.keep_viewable and credential.plaintext is not None:
+            return str(StoreMethod.PLAINTEXT)
+        return str(StoreMethod.HASHED)

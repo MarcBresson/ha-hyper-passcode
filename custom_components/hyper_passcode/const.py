@@ -28,6 +28,17 @@ def credential_device_identifier(credential_id: str) -> tuple[str, str]:
     return (DOMAIN, f"{CREDENTIAL_DEVICE_PREFIX}_{credential_id}")
 
 
+def credential_code_unique_id(credential_id: str) -> str:
+    """Return the unique id of the sensor that shows a credential's code.
+
+    Shared with the coordinator rather than left inline in the sensor, because
+    discarding a stored code also has to find that entity's recorded history and
+    delete it. A drift between the two spellings would silently leave the code in
+    the recorder database.
+    """
+    return f"{credential_id}_code"
+
+
 # Integration-level settings and their defaults.
 CONF_REJECT_WEAK_CODES: Final = "reject_weak_codes"
 CONF_WEAK_CODE_BLOCKLIST: Final = "weak_code_blocklist"
@@ -60,6 +71,17 @@ class CodeType(StrEnum):
 
     PIN = "pin"
     ALPHANUMERIC = "alphanumeric"
+
+
+class StoreMethod(StrEnum):
+    """How a credential's secret is held.
+
+    Only ever a readback of ``keep_viewable``: the lookup index is always there, and
+    what varies is whether a copy in clear sits beside it.
+    """
+
+    PLAINTEXT = "plaintext"
+    HASHED = "hashed"
 
 
 class Outcome(StrEnum):

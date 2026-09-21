@@ -8,6 +8,7 @@ left alone by a dialog that no longer shows them.
 from datetime import UTC, datetime
 
 import pytest
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 
@@ -17,6 +18,7 @@ from custom_components.hyper_passcode.const import (
     DEFAULT_LOCKOUT_THRESHOLD,
     RejectionReason,
     Source,
+    StoreMethod,
 )
 from tests.helpers import set_number, set_text, state_of
 
@@ -260,10 +262,20 @@ async def test_keep_viewable_can_be_turned_off_but_not_back_on(
 
     assert state_of(hass, "switch.cleaner_keep_viewable").state == "on"
     assert credential.plaintext == code
+    # While it is on, the code is readable on the device rather than only in the
+    # dialog that created it.
+    assert state_of(hass, "sensor.cleaner_code").state == code
+    assert state_of(hass, "sensor.cleaner_store_method").state == str(
+        StoreMethod.PLAINTEXT
+    )
 
     await switch(hass, "switch.cleaner_keep_viewable", False)
     assert credential.keep_viewable is False
     assert credential.plaintext is None
+    assert state_of(hass, "sensor.cleaner_code").state == STATE_UNKNOWN
+    assert state_of(hass, "sensor.cleaner_store_method").state == str(
+        StoreMethod.HASHED
+    )
 
     # Turning it back on cannot recover a code nothing holds any more, so it says so
     # rather than reporting a viewable code that is not there.

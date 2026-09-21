@@ -90,6 +90,8 @@ Settings, editable from the device page, a dashboard or an automation:
 | `text.<code>_tags` | code | Comma-separated, and what `revoke_all` filters on |
 | `switch.<code>_enabled` | code | Turns a code off without deleting it |
 | `switch.<code>_keep_viewable` | code | Off discards the stored copy of the code |
+| `sensor.<code>_code` | code | The code in clear, when it is kept viewable; unknown otherwise. Its history is purged when the code is discarded |
+| `sensor.<code>_store_method` | code | `plaintext` or `hashed` |
 
 Actions:
 
@@ -140,9 +142,13 @@ Note the returned `scope_id`, which the remaining steps need.
 ### 2. Add a code
 
 Press **Add code** on the same page. Give it a name, pick which scopes it opens, and leave
-the code blank to have one generated. The next step shows you the code — that is the only
-time you see it, unless you tick "Keep code viewable". That tick box is the one thing that
-has to be decided up front: a code nobody kept a copy of cannot be recovered later.
+the code blank to have one generated.
+
+Tick "Keep code viewable" and the next step prints the code, which then stays readable on the
+code's own device as `sensor.<code>_code`. Leave it off and the code is never shown — the
+confirmation step masks it as `****`, and `sensor.<code>_store_method` reads `hashed`. That
+tick box is the one thing that has to be decided up front: a code nobody kept a copy of
+cannot be recovered later, only regenerated.
 
 The dialog also takes the schedule and condition entities, since those are entity pickers.
 The rest of the validity rules — the window, the use limits, the cooldown — are entities on
@@ -358,7 +364,17 @@ backup. It does not defend against an attacker with filesystem access. Home Assi
 backups are unencrypted by default, so treat one as containing your door codes.
 
 "Keep code viewable" stores the code in clear text so it can be read back and re-shared. It's
-a trade-off, and the UI says so.
+a trade-off, and the UI says so. It also puts the code on `sensor.<code>_code`, which means
+the recorder keeps its history like any other state — a code that must not reach the database
+is one to leave un-viewable.
+
+Turning the switch back off, or deleting the code, calls `recorder.purge_entities` on that
+sensor with `keep_days: 0`, so the history goes with the stored copy rather than lingering
+for another `purge_keep_days`. Every row of that entity's history is a copy of the code, so
+deleting it whole is the right scope. If the purge cannot be done — the recorder refusing, or
+erroring — a repair appears in **Settings > Repairs** naming the code and the entity, because
+the alternative is telling you the code is gone when it is not. No recorder means nothing
+recorded it, and nothing is attempted.
 
 If Home Assistant is down, no code works. That comes with validating codes in software, and
 it's why a lock with its own keypad is still a reasonable backup for a front door.

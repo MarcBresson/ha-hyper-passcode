@@ -83,6 +83,11 @@ ATTR_DRY_RUN = "dry_run"
 
 TITLE = "HyperPasscode"
 
+#: Shown in place of the code on the confirmation step when no readable copy is being
+#: kept. The code exists in clear for exactly the length of that step, and showing it
+#: there would put on screen the one thing the user just asked not to keep.
+MASKED_CODE = "****"
+
 #: What the test page can submit as. ``unknown`` is left out: it is what the engine
 #: uses for a submission with no stated origin, not something worth testing as.
 TESTABLE_SOURCES = [str(source) for source in Source if source is not Source.UNKNOWN]
@@ -417,7 +422,11 @@ def _credential_schema(
             CONF_NAME, default=default(current.get(CONF_NAME))
         ): TextSelector(),
         # Left blank on add it is generated, and on edit the existing code is kept.
-        vol.Optional(ATTR_CODE): TextSelector(),
+        # Masked while it is typed, like the test page's field: a code being set by
+        # hand is a secret on screen whether or not a copy of it is kept afterwards.
+        vol.Optional(ATTR_CODE): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
         vol.Optional(
             ATTR_SCOPE_IDS, default=current.get(ATTR_SCOPE_IDS) or []
         ): SelectSelector(SelectSelectorConfig(options=scope_options, multiple=True)),
@@ -521,21 +530,40 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
     async def async_step_created(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the code once, then commit it.
+        """Confirm the new code, showing it only when a copy is being kept.
 
-        A code that is not kept viewable can never be shown again, so this step
-        exists to give the user their one chance to write it down.
+        Two variants, because the two cases have nothing to say to each other. With
+        "Keep code viewable" ticked the code is printed and stays readable afterwards
+        on its own device. Without it the code is masked here as well: it would
+        otherwise be revealed on screen at the one moment the user has just said they
+        do not want a readable copy of it to exist.
         """
         if user_input is None:
+            viewable = self._credential.keep_viewable
             return self.async_show_form(
-                step_id="created",
+                step_id="created" if viewable else "created_hidden",
                 data_schema=vol.Schema({}),
                 description_placeholders={
-                    "code": self._code,
+                    "code": self._code if viewable else MASKED_CODE,
                     "label": self._credential.label,
                 },
             )
+        return self._commit()
 
+    async def async_step_created_hidden(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Take the submit from the masked variant of the confirmation step.
+
+        Home Assistant routes a form's submit back to the step it was shown under, so
+        the second variant needs a handler of its own even though it decides nothing.
+        """
+        if user_input is None:
+            return await self.async_step_created()
+        return self._commit()
+
+    def _commit(self) -> SubentryFlowResult:
+        """Store the secret half and write the subentry."""
         self._coordinator().async_stash_secret(self._credential)
         return self.async_create_entry(
             title=self._credential.label, data=self._credential.config_dict()

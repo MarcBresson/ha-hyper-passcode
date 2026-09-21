@@ -6,11 +6,14 @@ these tests drive it the way the UI does rather than calling the coordinator.
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.selector import TextSelectorType
 from pytest_homeassistant_custom_component.common import async_capture_events
 
+from custom_components.hyper_passcode.config_flow import MASKED_CODE
 from custom_components.hyper_passcode.const import (
     DEFAULT_LOCKOUT_THRESHOLD,
     DOMAIN,
@@ -19,6 +22,7 @@ from custom_components.hyper_passcode.const import (
     Outcome,
     RejectionReason,
     Source,
+    StoreMethod,
 )
 from custom_components.hyper_passcode.models import Policy
 from tests.helpers import set_number, state_of
@@ -234,7 +238,13 @@ async def test_options_flow_saves_settings(hass: HomeAssistant, entry):
 
 
 async def add_code(hass: HomeAssistant, entry, **fields) -> tuple[str, str]:
-    """Add a code through the subentry flow, returning its id and the code shown."""
+    """Add a code through the subentry flow, returning its id and the code shown.
+
+    Defaults to keeping the code viewable, because that is the only case where the
+    confirmation step prints the code: without it the step shows ``****`` and a
+    generated code is gone for good, which leaves a test nothing to submit.
+    """
+    fields.setdefault("keep_viewable", True)
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_CREDENTIAL),
         context={"source": config_entries.SOURCE_USER},
@@ -244,9 +254,11 @@ async def add_code(hass: HomeAssistant, entry, **fields) -> tuple[str, str]:
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"name": "Cleaner", **fields}
     )
-    # The generated code is shown once before anything is committed.
+    # The code is confirmed before anything is committed, on one of two steps.
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "created"
+    assert result["step_id"] == (
+        "created" if fields["keep_viewable"] else "created_hidden"
+    )
     placeholders = result["description_placeholders"]
     assert placeholders is not None
     code = placeholders["code"]
@@ -281,6 +293,41 @@ async def test_adding_a_code_shows_it_once_and_makes_it_work(
     result = await coordinator.async_submit(scope_id, code, Source.KEYPAD)
     assert result.valid is True
     assert result.label == "Cleaner"
+
+
+async def test_a_viewable_code_stays_readable_on_its_device(hass: HomeAssistant, entry):
+    _credential_id, code = await add_code(hass, entry, keep_viewable=True)
+
+    # Shown in the dialog, and still readable afterwards -- the dialog is not the
+    # only chance to see it.
+    assert code != MASKED_CODE
+    assert state_of(hass, "sensor.cleaner_code").state == code
+    assert state_of(hass, "sensor.cleaner_store_method").state == str(
+        StoreMethod.PLAINTEXT
+    )
+
+
+async def test_a_code_that_is_not_kept_viewable_is_never_shown(
+    hass: HomeAssistant, entry
+):
+    _credential_id, shown = await add_code(hass, entry, keep_viewable=False)
+
+    assert shown == MASKED_CODE
+    assert state_of(hass, "sensor.cleaner_code").state == STATE_UNKNOWN
+    assert state_of(hass, "sensor.cleaner_store_method").state == str(
+        StoreMethod.HASHED
+    )
+
+
+async def test_the_code_field_is_masked_while_it_is_typed(hass: HomeAssistant, entry):
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_CREDENTIAL),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    schema = result["data_schema"]
+    assert schema is not None
+    selector = next(value for key, value in schema.schema.items() if str(key) == "code")
+    assert selector.config["type"] == TextSelectorType.PASSWORD
 
 
 async def test_an_added_code_creates_its_entities(hass: HomeAssistant, entry):
@@ -366,7 +413,8 @@ async def test_abandoning_the_add_dialog_leaves_nothing_behind(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"name": "Abandoned"}
     )
-    assert result["step_id"] == "created"
+    # Nothing ticked "Keep code viewable", so it is the masked confirmation.
+    assert result["step_id"] == "created_hidden"
 
     hass.config_entries.subentries.async_abort(result["flow_id"])
     await hass.async_block_till_done()

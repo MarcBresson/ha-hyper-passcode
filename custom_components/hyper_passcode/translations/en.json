@@ -26,7 +26,7 @@
       "step": {
         "user": {
           "title": "Add code",
-          "description": "Leave the code blank to have one generated. You will be shown it on the next step.\n\nValidity dates, use limits, notes and tags are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
+          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits, notes and tags are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
           "data": {
             "name": "Name",
             "code": "Code",
@@ -40,7 +40,7 @@
             "name": "What this code is for, such as Cleaner or Grocery delivery.",
             "code": "Leave empty to generate one.",
             "scope_ids": "The scopes this code opens. A code with no scope cannot be used anywhere yet.",
-            "keep_viewable": "Stores the code in clear text so it can be read back and shared again. Decide now: without it the code can only be regenerated, never recovered.",
+            "keep_viewable": "Stores the code in clear text so it can be read back from the code's device and shared again. Decide now: without it the code is never shown -- not even on the next step -- and can only be regenerated.",
             "owner": "The person this code belongs to. Their name then appears in the audit log and in automations.",
             "schedule_entities": "Schedule helpers that must all be on. These recur weekly, so pair them with the code's 'Valid from' and 'Valid until' entities for a date range.",
             "condition_entities": "Any on/off entities that must all be on. Point one at a calendar to make the code live only during matching events."
@@ -48,7 +48,11 @@
         },
         "created": {
           "title": "Code created",
-          "description": "The code for {label} is:\n\n**{code}**\n\nWrite it down now. Unless you ticked 'Keep code viewable' this is the only time it will be shown. Press Submit to save it."
+          "description": "The code for {label} is:\n\n**{code}**\n\nYou ticked 'Keep code viewable', so a copy is kept in clear: the code stays readable on this code's own device, under its 'Code' entity. Press Submit to save it."
+        },
+        "created_hidden": {
+          "title": "Code created",
+          "description": "The code for {label} is:\n\n**{code}**\n\nYou left 'Keep code viewable' off, so only a hashed lookup of the code is stored and it is not shown -- not here, and not on the code's device, where 'Store method' will read *hashed*. If you need to read this code back later, cancel and add it again with 'Keep code viewable' ticked.\n\nPress Submit to save it."
         },
         "reconfigure": {
           "title": "Edit code",
@@ -200,6 +204,14 @@
       "last_used": { "name": "Last used" },
       "failed_attempts": { "name": "Failed attempts" },
       "uses": { "name": "Uses" },
+      "code": { "name": "Code" },
+      "store_method": {
+        "name": "Store method",
+        "state": {
+          "plaintext": "Kept in clear",
+          "hashed": "Hashed"
+        }
+      },
       "last_result": {
         "name": "Last result",
         "state": {
@@ -419,6 +431,12 @@
       "fields": {
         "scope_id": { "name": "Scope", "description": "The scope to delete." }
       }
+    }
+  },
+  "issues": {
+    "code_history_not_purged": {
+      "title": "A discarded code may still be in the recorder database",
+      "description": "The stored copy of the code for {label} was discarded, but its recorded history on `{entity_id}` could not be deleted, so the code in clear may remain in the recorder database until that history is purged.\n\nTo clear it by hand, call the `recorder.purge_entities` action on `{entity_id}` with `keep_days: 0`. The integration log has the underlying error."
     }
   },
   "exceptions": {

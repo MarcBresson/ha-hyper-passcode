@@ -12,8 +12,11 @@ from typing import Any
 from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
+from homeassistant.const import Platform
 from homeassistant.core import CALLBACK_TYPE, Context, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.script import Script
@@ -56,6 +59,7 @@ from .const import (
     Outcome,
     RejectionReason,
     Source,
+    credential_code_unique_id,
     credential_device_identifier,
 )
 from .crypto import compute_lookup_index, find_weakness, generate_code, verify
@@ -77,6 +81,15 @@ SIGNAL_SCOPES_CHANGED = f"{DOMAIN}_scopes_changed"
 SIGNAL_CREDENTIALS_CHANGED = f"{DOMAIN}_credentials_changed"
 SIGNAL_CREDENTIAL_UPDATED = f"{DOMAIN}_credential_updated_{{}}"
 SIGNAL_SCOPE_UPDATED = f"{DOMAIN}_scope_updated_{{}}"
+
+#: The recorder, and the service on it that deletes one entity's recorded history.
+RECORDER_DOMAIN = "recorder"
+SERVICE_PURGE_ENTITIES = "purge_entities"
+
+#: Repair issue raised when a code's history could not be deleted after all. One per
+#: entity, so two codes that both fail are two separate warnings.
+ISSUE_TRANSLATION_KEY = "code_history_not_purged"
+ISSUE_CODE_HISTORY = f"{ISSUE_TRANSLATION_KEY}_{{}}"
 
 
 @dataclass
@@ -937,10 +950,17 @@ class HyperPasscodeCoordinator:
 
         # Applied before the code, so setting a new code and making it viewable in the
         # same call stores the plaintext rather than silently dropping it.
+        discarded = False
         if (keep_viewable := changes.pop("keep_viewable", None)) is not None:
+            discarded = credential.keep_viewable and not keep_viewable
             credential.keep_viewable = keep_viewable
             if not keep_viewable:
                 credential.plaintext = None
+        # Read while the entity is certain to be registered, and before the purge,
+        # which only happens once the sensor has been told to drop the code.
+        code_entity_id = (
+            self._async_code_entity_id(credential_id) if discarded else None
+        )
 
         if (code := changes.pop("code", None)) is not None:
             if self._lookup(code) is not credential:
@@ -979,6 +999,11 @@ class HyperPasscodeCoordinator:
             self.hass, SIGNAL_CREDENTIAL_UPDATED.format(credential_id)
         )
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
+
+        # After the dispatch, so the sensor has already written its code away and the
+        # purge does not leave the last clear state behind as the newest row.
+        if discarded:
+            await self.async_purge_code_history(code_entity_id, credential.label)
         return credential
 
     @callback
@@ -1000,8 +1025,11 @@ class HyperPasscodeCoordinator:
             )
 
     async def async_delete_credential(self, credential_id: str) -> None:
-        """Remove a credential, its secret and its entities."""
+        """Remove a credential, its secret, its entities and its recorded code."""
         credential = self.get_credential(credential_id)
+        # Both read before the subentry goes, which takes the registry entry with it.
+        label = credential.label
+        code_entity_id = self._async_code_entity_id(credential_id)
         self._index.pop(credential.lookup_index, None)
         self._credentials.pop(credential_id, None)
         self.data.secrets.pop(credential_id, None)
@@ -1016,6 +1044,67 @@ class HyperPasscodeCoordinator:
             dr.async_get(self.hass).async_remove_device(device.id)
 
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
+        # Unconditionally: a code that is hashed now may well have been viewable
+        # earlier, and that history is still the code in clear.
+        await self.async_purge_code_history(code_entity_id, label)
+
+    @callback
+    def _async_code_entity_id(self, credential_id: str) -> str | None:
+        """Return a credential's code sensor id, while it still has one.
+
+        Resolved separately from the purge because deleting a credential takes its
+        subentry, and with it the registry entry, before there is anything to purge.
+        The id has to be read while it is still there.
+        """
+        return er.async_get(self.hass).async_get_entity_id(
+            Platform.SENSOR, DOMAIN, credential_code_unique_id(credential_id)
+        )
+
+    async def async_purge_code_history(self, entity_id: str | None, label: str) -> None:
+        """Delete the recorded history of a credential's code sensor.
+
+        Discarding the stored copy of a code empties ``plaintext``, but the recorder
+        has been keeping every state that sensor ever had, so without this the code
+        would sit in the database for up to ``purge_keep_days`` after the user asked
+        for it to be gone. Deleting that entity's history whole is the right scope:
+        every row in it is a copy of the code.
+
+        Nothing to do when the sensor was never registered -- with
+        ``per_credential_entities`` off there is no entity, and so nothing recorded --
+        or when there is no recorder to have recorded it. Anything else that stops the
+        purge is reported, because the alternative is telling the user the code is
+        gone when it is not.
+        """
+        if entity_id is None or RECORDER_DOMAIN not in self.hass.config.components:
+            return
+
+        issue_id = ISSUE_CODE_HISTORY.format(entity_id)
+        try:
+            await self.hass.services.async_call(
+                RECORDER_DOMAIN,
+                SERVICE_PURGE_ENTITIES,
+                {"entity_id": [entity_id], "keep_days": 0},
+                blocking=True,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Could not purge the recorded history of %s; the code for %s may "
+                "remain in the recorder database",
+                entity_id,
+                label,
+            )
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=ISSUE_TRANSLATION_KEY,
+                translation_placeholders={"label": label, "entity_id": entity_id},
+            )
+        else:
+            # A later attempt that works clears a warning from an earlier one.
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
     @callback
     def _async_credential_device(self, credential_id: str) -> dr.DeviceEntry | None:
