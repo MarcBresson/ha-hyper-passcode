@@ -8,8 +8,8 @@ policy, so a value set here survives a restart exactly as a dialog field did.
 A number entity cannot hold ``None``, so every field that used to mean "leave it
 blank" encodes that as zero: no fixed code length, unlimited uses, no cooldown. The
 two lockout numbers are the exception, because zero already means "never lock out"
-there. They report the integration-wide setting until something is written, and the
-first write pins an override for that scope alone.
+there. They start at the per-scope defaults and are a plain reading of what that
+scope stores -- lockout belongs to the door, not to the integration.
 """
 
 from collections.abc import Callable
@@ -42,8 +42,8 @@ from .models import Credential, Policy, Scope
 class ScopeNumberDescription(NumberEntityDescription):
     """One editable field on a scope."""
 
-    #: Reads the value to show, which for the lockout pair is the effective one.
-    value_fn: Callable[[HyperPasscodeCoordinator, Scope], float]
+    #: Reads the value to show off the scope.
+    value_fn: Callable[[Scope], float]
     #: Turns what the user typed into what the scope stores.
     to_stored: Callable[[float], Any]
 
@@ -74,7 +74,7 @@ SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
         native_min_value=0,
         native_max_value=64,
         native_step=1,
-        value_fn=lambda _coordinator, scope: scope.code_length or 0,
+        value_fn=lambda scope: scope.code_length or 0,
         to_stored=_optional_int,
     ),
     ScopeNumberDescription(
@@ -88,7 +88,7 @@ SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
         native_min_value=1,
         native_max_value=300,
         native_step=0.5,
-        value_fn=lambda _coordinator, scope: scope.inter_key_timeout,
+        value_fn=lambda scope: scope.inter_key_timeout,
         to_stored=float,
     ),
     ScopeNumberDescription(
@@ -100,7 +100,7 @@ SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
         native_min_value=0,
         native_max_value=100,
         native_step=1,
-        value_fn=lambda coordinator, scope: coordinator.lockout_threshold(scope),
+        value_fn=lambda scope: scope.lockout_threshold,
         to_stored=int,
     ),
     ScopeNumberDescription(
@@ -114,7 +114,7 @@ SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
         native_min_value=0,
         native_max_value=86400,
         native_step=1,
-        value_fn=lambda coordinator, scope: coordinator.lockout_duration(scope),
+        value_fn=lambda scope: scope.lockout_duration,
         to_stored=int,
     ),
 )
@@ -214,7 +214,7 @@ class ScopeNumber(NumberEntity, HyperPasscodeScopeEntity):
         scope = self.scope
         if scope is None:
             return None
-        return self.entity_description.value_fn(self.coordinator, scope)
+        return self.entity_description.value_fn(scope)
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the new value back to the scope's subentry."""

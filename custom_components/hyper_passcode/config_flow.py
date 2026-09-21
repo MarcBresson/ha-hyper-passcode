@@ -45,16 +45,12 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_AUDIT_LOG_SIZE,
     CONF_DEFAULT_CODE_LENGTH,
-    CONF_LOCKOUT_DURATION,
-    CONF_LOCKOUT_THRESHOLD,
     CONF_LOG_FAILED_PLAINTEXT,
     CONF_PER_CREDENTIAL_ENTITIES,
     CONF_REJECT_WEAK_CODES,
     CONF_WEAK_CODE_BLOCKLIST,
     DEFAULT_AUDIT_LOG_SIZE,
     DEFAULT_CODE_LENGTH,
-    DEFAULT_LOCKOUT_DURATION,
-    DEFAULT_LOCKOUT_THRESHOLD,
     DEFAULT_LOG_FAILED_PLAINTEXT,
     DEFAULT_PER_CREDENTIAL_ENTITIES,
     DEFAULT_REJECT_WEAK_CODES,
@@ -172,12 +168,7 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
         """Show and save the settings form."""
         if user_input is not None:
             # Number selectors hand back floats; the rest of the code expects ints.
-            for key in (
-                CONF_AUDIT_LOG_SIZE,
-                CONF_DEFAULT_CODE_LENGTH,
-                CONF_LOCKOUT_THRESHOLD,
-                CONF_LOCKOUT_DURATION,
-            ):
+            for key in (CONF_AUDIT_LOG_SIZE, CONF_DEFAULT_CODE_LENGTH):
                 if key in user_input:
                     user_input[key] = int(user_input[key])
             return self.async_create_entry(data=user_input)
@@ -207,18 +198,6 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
                     CONF_DEFAULT_CODE_LENGTH,
                     default=options.get(CONF_DEFAULT_CODE_LENGTH, DEFAULT_CODE_LENGTH),
                 ): _count(3, 32),
-                vol.Optional(
-                    CONF_LOCKOUT_THRESHOLD,
-                    default=options.get(
-                        CONF_LOCKOUT_THRESHOLD, DEFAULT_LOCKOUT_THRESHOLD
-                    ),
-                ): _count(0, 100),
-                vol.Optional(
-                    CONF_LOCKOUT_DURATION,
-                    default=options.get(
-                        CONF_LOCKOUT_DURATION, DEFAULT_LOCKOUT_DURATION
-                    ),
-                ): _count(0, 86400),
                 vol.Optional(
                     CONF_AUDIT_LOG_SIZE,
                     default=options.get(CONF_AUDIT_LOG_SIZE, DEFAULT_AUDIT_LOG_SIZE),

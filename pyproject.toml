@@ -1,6 +1,6 @@
 [project]
 name = "ha-hyper-passcode"
-version = "0.1.2"
+version = "0.1.3"
 description = "HyperPasscode: a credential, policy and action broker for Home Assistant"
 requires-python = ">=3.14.2,<3.15"
 

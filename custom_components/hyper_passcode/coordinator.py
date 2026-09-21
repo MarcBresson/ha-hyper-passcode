@@ -33,16 +33,12 @@ from .const import (
     ATTR_SOURCE,
     CONF_AUDIT_LOG_SIZE,
     CONF_DEFAULT_CODE_LENGTH,
-    CONF_LOCKOUT_DURATION,
-    CONF_LOCKOUT_THRESHOLD,
     CONF_LOG_FAILED_PLAINTEXT,
     CONF_PER_CREDENTIAL_ENTITIES,
     CONF_REJECT_WEAK_CODES,
     CONF_WEAK_CODE_BLOCKLIST,
     DEFAULT_AUDIT_LOG_SIZE,
     DEFAULT_CODE_LENGTH,
-    DEFAULT_LOCKOUT_DURATION,
-    DEFAULT_LOCKOUT_THRESHOLD,
     DEFAULT_LOG_FAILED_PLAINTEXT,
     DEFAULT_PER_CREDENTIAL_ENTITIES,
     DEFAULT_REJECT_WEAK_CODES,
@@ -387,18 +383,6 @@ class HyperPasscodeCoordinator:
         """Starting length for generated codes."""
         return int(self.setting(CONF_DEFAULT_CODE_LENGTH, DEFAULT_CODE_LENGTH))
 
-    def lockout_threshold(self, scope: Scope) -> int:
-        """Failures before a scope locks out, scope override winning."""
-        if scope.lockout_threshold is not None:
-            return scope.lockout_threshold
-        return int(self.setting(CONF_LOCKOUT_THRESHOLD, DEFAULT_LOCKOUT_THRESHOLD))
-
-    def lockout_duration(self, scope: Scope) -> int:
-        """Lockout length in seconds, scope override winning."""
-        if scope.lockout_duration is not None:
-            return scope.lockout_duration
-        return int(self.setting(CONF_LOCKOUT_DURATION, DEFAULT_LOCKOUT_DURATION))
-
     def is_locked_out(self, scope_id: str, now: datetime | None = None) -> bool:
         """Whether a scope is currently refusing submissions."""
         runtime = self.runtime(scope_id)
@@ -534,9 +518,9 @@ class HyperPasscodeCoordinator:
         """
         runtime = self.runtime(scope.scope_id)
         runtime.failed_attempts += 1
-        threshold = self.lockout_threshold(scope)
+        threshold = scope.lockout_threshold
         if threshold > 0 and runtime.failed_attempts >= threshold:
-            runtime.locked_until = now + timedelta(seconds=self.lockout_duration(scope))
+            runtime.locked_until = now + timedelta(seconds=scope.lockout_duration)
             runtime.failed_attempts = 0
             _LOGGER.warning(
                 "Scope %s locked out until %s after %s failed attempts",

@@ -15,6 +15,7 @@ from pytest_homeassistant_custom_component.common import async_capture_events
 
 from custom_components.hyper_passcode.config_flow import MASKED_CODE
 from custom_components.hyper_passcode.const import (
+    DEFAULT_LOCKOUT_DURATION,
     DEFAULT_LOCKOUT_THRESHOLD,
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
@@ -106,8 +107,8 @@ async def test_scope_lockout_is_configured_per_scope(hass: HomeAssistant, entry)
     await set_number(hass, "number.front_door_lockout_duration", 45)
 
     scope = coordinator.scopes[scope_id]
-    assert coordinator.lockout_threshold(scope) == 2
-    assert coordinator.lockout_duration(scope) == 45
+    assert scope.lockout_threshold == 2
+    assert scope.lockout_duration == 45
 
     # And it is the threshold that actually governs the lockout.
     for _ in range(2):
@@ -116,15 +117,15 @@ async def test_scope_lockout_is_configured_per_scope(hass: HomeAssistant, entry)
     assert coordinator.is_locked_out(scope_id)
 
 
-async def test_omitting_lockout_falls_back_to_the_integration_setting(
-    hass: HomeAssistant, entry
-):
+async def test_a_new_scope_starts_from_the_default_lockout(hass: HomeAssistant, entry):
+    # Lockout is the scope's own setting now, so a new one carries the default
+    # outright rather than a None meaning "ask the integration".
     scope_id = await add_scope(hass, entry)
     coordinator = entry.runtime_data
     scope = coordinator.scopes[scope_id]
 
-    assert scope.lockout_threshold is None
-    assert coordinator.lockout_threshold(scope) == DEFAULT_LOCKOUT_THRESHOLD
+    assert scope.lockout_threshold == DEFAULT_LOCKOUT_THRESHOLD
+    assert scope.lockout_duration == DEFAULT_LOCKOUT_DURATION
 
 
 async def test_reconfiguring_a_scope_keeps_its_runtime_state(
@@ -156,8 +157,8 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
     scope = entry.runtime_data.scopes[scope_id]
     assert scope.name == "Back Door"
     # The dialog does not show the lockout settings any more, so it must not wipe
-    # the override the number entity wrote either.
-    assert entry.runtime_data.lockout_threshold(scope) == 9
+    # the value the number entity wrote either.
+    assert scope.lockout_threshold == 9
     # Editing a scope must not reset counters or half-typed codes.
     assert entry.runtime_data.runtime(scope_id).failed_attempts == 1
 
@@ -220,8 +221,6 @@ async def test_options_flow_saves_settings(hass: HomeAssistant, entry):
             "reject_weak_codes": False,
             "per_credential_entities": True,
             "default_code_length": 8,
-            "lockout_threshold": 7,
-            "lockout_duration": 120,
             "audit_log_size": 50,
             "log_failed_plaintext": False,
             "weak_code_blocklist": ["1979"],

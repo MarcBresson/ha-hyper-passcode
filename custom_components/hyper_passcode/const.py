@@ -46,8 +46,6 @@ CONF_PER_CREDENTIAL_ENTITIES: Final = "per_credential_entities"
 CONF_AUDIT_LOG_SIZE: Final = "audit_log_size"
 CONF_LOG_FAILED_PLAINTEXT: Final = "log_failed_plaintext"
 CONF_DEFAULT_CODE_LENGTH: Final = "default_code_length"
-CONF_LOCKOUT_THRESHOLD: Final = "lockout_threshold"
-CONF_LOCKOUT_DURATION: Final = "lockout_duration"
 
 DEFAULT_REJECT_WEAK_CODES: Final = True
 DEFAULT_WEAK_CODE_BLOCKLIST: Final[list[str]] = []
@@ -55,12 +53,14 @@ DEFAULT_PER_CREDENTIAL_ENTITIES: Final = True
 DEFAULT_AUDIT_LOG_SIZE: Final = 1000
 DEFAULT_LOG_FAILED_PLAINTEXT: Final = False
 DEFAULT_CODE_LENGTH: Final = 6
-DEFAULT_LOCKOUT_THRESHOLD: Final = 5
-DEFAULT_LOCKOUT_DURATION: Final = 300  # seconds
 
-# Per-scope entry defaults.
+# Per-scope defaults. Lockout belongs to the door rather than the integration -- a
+# keypad on the street and a panel in the hallway want different answers -- so these
+# are only ever starting points for a scope's own settings.
 DEFAULT_INTER_KEY_TIMEOUT: Final = 10.0  # seconds
 DEFAULT_TERMINATOR_KEYS: Final[list[str]] = ["#"]
+DEFAULT_LOCKOUT_THRESHOLD: Final = 5
+DEFAULT_LOCKOUT_DURATION: Final = 300  # seconds
 
 # How many recent use timestamps to retain per credential for rate limiting.
 MAX_RECENT_USES: Final = 100

@@ -63,8 +63,8 @@ async def test_a_new_scope_reports_the_settings_in_effect(
     def number(entity_id: str) -> float:
         return float(state_of(hass, entity_id).state)
 
-    # Nothing is stored on the scope yet, so the two lockout numbers show the
-    # integration-wide setting rather than a blank.
+    # Nothing has been written yet, so the two lockout numbers show the per-scope
+    # defaults rather than a blank.
     assert number("number.front_door_lockout_threshold") == DEFAULT_LOCKOUT_THRESHOLD
     assert number("number.front_door_lockout_duration") == DEFAULT_LOCKOUT_DURATION
     assert number("number.front_door_inter_key_timeout") == DEFAULT_INTER_KEY_TIMEOUT

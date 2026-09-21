@@ -78,8 +78,8 @@ Settings, editable from the device page, a dashboard or an automation:
 |---|---|---|
 | `number.<scope>_code_length` | scope | Auto-submit at this length. `0` waits for a terminator |
 | `number.<scope>_inter_key_timeout` | scope | Seconds before a half-typed code is dropped |
-| `number.<scope>_lockout_threshold` | scope | Failures before lockout. `0` disables it |
-| `number.<scope>_lockout_duration` | scope | How long a lockout lasts |
+| `number.<scope>_lockout_threshold` | scope | Failures before lockout, `5` by default. `0` disables it |
+| `number.<scope>_lockout_duration` | scope | How long a lockout lasts, `300s` by default |
 | `number.<code>_max_uses` | code | Lifetime limit. `0` is unlimited |
 | `number.<code>_uses_per_hour` | code | Rolling hourly limit. `0` is unlimited |
 | `number.<code>_uses_per_day` | code | Rolling 24-hour limit. `0` is unlimited |
@@ -314,16 +314,16 @@ half-typed code doesn't linger.
 | Weak code blocklist | empty | Extra values to treat as weak, such as your house number |
 | Create entities per credential | on | Adds the use counter, switches, dates and limits per credential. Turn it off if you have many, but then those settings are only reachable through actions |
 | Default code length | 6 | Starting point for the generator |
-| Failed attempts before lockout | 5 | `0` disables lockout. Can be overridden per scope |
-| Lockout duration | 300s | Can be overridden per scope |
 | Audit log size | 1000 | Ring buffer. Every submission also fires an event, so the recorder keeps the full history anyway |
 | Log what was typed on failure | off | Off by default, because a failed attempt is usually a typo of a real code, and recording it would leak that code into your logs |
 
-These are the defaults for the whole integration. The two lockout settings can be overridden
-per scope: every scope's `number.<scope>_lockout_threshold` and `number.<scope>_lockout_duration`
-report the values above until something writes to them, and the first write pins an override
-for that door alone. Changing the integration-wide value still moves every scope that has
-never been written to.
+Lockout is not here: it belongs to the door rather than the integration, since a keypad on the
+street and a panel in the hallway want different answers. Each scope carries its own
+`number.<scope>_lockout_threshold` (5) and `number.<scope>_lockout_duration` (300s), editable
+from the scope's device page, a dashboard or an automation.
+
+Lockout moved out of these settings in 0.1.3, and there is no migration: if you had tuned the
+integration-wide values, set them again on each scope that needs them.
 
 Collision refusal isn't configurable. Two identical active codes in one scope would make the
 audit log unattributable, which defeats the point of the monitoring.

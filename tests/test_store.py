@@ -253,23 +253,68 @@ async def test_the_integration_loads_from_both_stores(
     assert scope.name == "Front Door"
     assert scope.terminator_keys == ["#", "*"]
     assert scope.code_length == 6
-    # The per-scope lockout overrides win over the integration-wide defaults.
-    assert coordinator.lockout_threshold(scope) == 4
-    assert coordinator.lockout_duration(scope) == 120
+    # The scope's own lockout settings are restored as they were stored.
+    assert scope.lockout_threshold == 4
+    assert scope.lockout_duration == 120
 
 
-async def test_scope_lockout_falls_back_to_the_integration_setting(
+async def test_scope_lockout_defaults_when_unset(
     hass: HomeAssistant, entry, coordinator
 ):
-    override = await coordinator.async_create_scope(
+    configured = await coordinator.async_create_scope(
         name="Gate", lockout_threshold=2, lockout_duration=60
     )
-    inherited = await coordinator.async_create_scope(name="Front Door")
+    untouched = await coordinator.async_create_scope(name="Front Door")
 
-    assert coordinator.lockout_threshold(override) == 2
-    assert coordinator.lockout_duration(override) == 60
-    assert coordinator.lockout_threshold(inherited) == DEFAULT_LOCKOUT_THRESHOLD
-    assert coordinator.lockout_duration(inherited) == DEFAULT_LOCKOUT_DURATION
+    assert configured.lockout_threshold == 2
+    assert configured.lockout_duration == 60
+    assert untouched.lockout_threshold == DEFAULT_LOCKOUT_THRESHOLD
+    assert untouched.lockout_duration == DEFAULT_LOCKOUT_DURATION
+
+
+async def test_an_entry_from_before_lockout_moved_to_the_scope_still_loads(
+    hass: HomeAssistant, hass_storage
+):
+    # Lockout used to be an integration option a scope could override, so an entry
+    # written then carries the settings in its options and a None on every scope that
+    # never overrode them. There is no migration: the stale keys are simply ignored
+    # and the scope comes up at the defaults.
+    hass_storage[STORAGE_KEY] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": STORAGE_KEY,
+        "data": V1_FIXTURE,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="HyperPasscode",
+        data={},
+        options={"lockout_threshold": 9, "lockout_duration": 600, "audit_log_size": 50},
+        subentries_data=[
+            ConfigSubentryData(
+                data={
+                    "icon": "mdi:door",
+                    "terminator_keys": ["#"],
+                    "lockout_threshold": None,
+                    "lockout_duration": None,
+                },
+                subentry_type=SUBENTRY_TYPE_SCOPE,
+                title="Front Door",
+                unique_id=None,
+            ),
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    (scope,) = coordinator.scopes.values()
+    assert scope.lockout_threshold == DEFAULT_LOCKOUT_THRESHOLD
+    assert scope.lockout_duration == DEFAULT_LOCKOUT_DURATION
+    # Settings that did not move are still read from the options.
+    assert coordinator.audit_log_size == 50
 
 
 async def test_credentials_survive_a_reload(hass: HomeAssistant, entry, coordinator):

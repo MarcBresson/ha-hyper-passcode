@@ -10,6 +10,8 @@ from typing import Any
 
 from .const import (
     DEFAULT_INTER_KEY_TIMEOUT,
+    DEFAULT_LOCKOUT_DURATION,
+    DEFAULT_LOCKOUT_THRESHOLD,
     DEFAULT_TERMINATOR_KEYS,
     MAX_RECENT_USES,
     CodeType,
@@ -24,6 +26,15 @@ def _dt_to_str(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat()
+
+
+def _int_or(value: Any, default: int) -> int:
+    """Read an int that may be missing or stored as None.
+
+    ``or`` would be wrong here: zero is a meaningful lockout setting -- it means never
+    lock out -- and only an absent value should fall back to the default.
+    """
+    return default if value is None else int(value)
 
 
 def _dt_from_str(value: str | None) -> datetime | None:
@@ -304,9 +315,9 @@ class Scope:
         default_factory=lambda: list(DEFAULT_TERMINATOR_KEYS)
     )
     inter_key_timeout: float = DEFAULT_INTER_KEY_TIMEOUT
-    #: None falls back to the integration-level setting.
-    lockout_threshold: int | None = None
-    lockout_duration: int | None = None
+    #: Failures before this scope stops accepting codes. Zero never locks out.
+    lockout_threshold: int = DEFAULT_LOCKOUT_THRESHOLD
+    lockout_duration: int = DEFAULT_LOCKOUT_DURATION
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise for the store."""
@@ -336,8 +347,14 @@ class Scope:
                 DEFAULT_TERMINATOR_KEYS if terminator_keys is None else terminator_keys
             ),
             inter_key_timeout=data.get("inter_key_timeout", DEFAULT_INTER_KEY_TIMEOUT),
-            lockout_threshold=data.get("lockout_threshold"),
-            lockout_duration=data.get("lockout_duration"),
+            # A scope stored before lockout moved here holds an explicit None, which
+            # used to mean "inherit the integration setting" and now means the default.
+            lockout_threshold=_int_or(
+                data.get("lockout_threshold"), DEFAULT_LOCKOUT_THRESHOLD
+            ),
+            lockout_duration=_int_or(
+                data.get("lockout_duration"), DEFAULT_LOCKOUT_DURATION
+            ),
         )
 
 

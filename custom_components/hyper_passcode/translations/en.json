@@ -145,8 +145,6 @@
           "weak_code_blocklist": "Weak code blocklist",
           "per_credential_entities": "Create entities per credential",
           "default_code_length": "Default code length",
-          "lockout_threshold": "Failed attempts before lockout",
-          "lockout_duration": "Lockout duration (seconds)",
           "audit_log_size": "Audit log size",
           "log_failed_plaintext": "Log what was typed on failure"
         },
@@ -154,7 +152,6 @@
           "reject_weak_codes": "Refuses repeated digits, sequential runs and well-known codes, for typed codes as well as generated ones.",
           "weak_code_blocklist": "Extra values to treat as weak, such as a house number or a birth year.",
           "per_credential_entities": "Gives every credential its own use counter, switches, validity dates and use limits. Turn this off if you have many credentials, or the entity list becomes unusable -- but with it off those settings are only reachable through actions.",
-          "lockout_threshold": "Set to 0 to disable lockout entirely.",
           "audit_log_size": "How many submissions to keep. Every submission also fires an event, so history is kept by the recorder regardless.",
           "log_failed_plaintext": "Off by default: a failed attempt is usually a typo of a real code, so recording it would leak that code into your logs."
         }
@@ -406,8 +403,8 @@
         "code_length": { "name": "Code length", "description": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key." },
         "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer, typically # or *." },
         "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long without a keystroke." },
-        "lockout_threshold": { "name": "Failed attempts before lockout", "description": "Overrides the integration setting for this scope." },
-        "lockout_duration": { "name": "Lockout duration", "description": "Overrides the integration setting for this scope." }
+        "lockout_threshold": { "name": "Failed attempts before lockout", "description": "How many failures in a row stop this scope accepting codes. 0 disables lockout entirely. Defaults to 5." },
+        "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds. Defaults to 300." }
       }
     },
     "update_scope": {
@@ -421,8 +418,8 @@
         "code_length": { "name": "Code length", "description": "Submit automatically at this length." },
         "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer." },
         "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long." },
-        "lockout_threshold": { "name": "Failed attempts before lockout", "description": "Overrides the integration setting." },
-        "lockout_duration": { "name": "Lockout duration", "description": "Overrides the integration setting." }
+        "lockout_threshold": { "name": "Failed attempts before lockout", "description": "How many failures in a row stop this scope accepting codes. 0 disables lockout entirely." },
+        "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds." }
       }
     },
     "delete_scope": {
