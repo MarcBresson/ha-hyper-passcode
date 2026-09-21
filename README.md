@@ -250,6 +250,13 @@ fill them in to give one door a stricter threshold than the rest of the house.
 Collision refusal isn't configurable. Two identical active codes in one scope would make the
 audit log unattributable, which defeats the point of the monitoring.
 
+## How things are laid out
+
+Scopes and codes each become a device. A code granted on exactly one scope is linked to
+that scope's device, so the scope's page lists the codes that open it rather than leaving
+both kinds in one flat list. A code granted on several stays top level: grants are
+many-to-many, and nesting it under one of its scopes would hide the others.
+
 ## How things are stored
 
 Scopes and codes are Home Assistant config subentries, which is what gives them the
