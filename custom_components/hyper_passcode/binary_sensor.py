@@ -48,8 +48,12 @@ class ScopeLockoutBinarySensor(BinarySensorEntity, HyperPasscodeScopeEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:
-        """When the lockout lifts."""
-        return {"locked_until": self.coordinator.runtime(self.scope_id).locked_until}
+        """When the lockout lifts, and how many consecutive lockouts led here."""
+        runtime = self.coordinator.runtime(self.scope_id)
+        return {
+            "locked_until": runtime.locked_until,
+            "lockout_streak": runtime.lockout_streak,
+        }
 
     async def async_added_to_hass(self) -> None:
         """Track the lockout expiry as well as scope updates.

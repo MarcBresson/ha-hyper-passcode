@@ -14,7 +14,9 @@ from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.hyper_passcode.const import (
     DEFAULT_INTER_KEY_TIMEOUT,
+    DEFAULT_LOCKOUT_BACKOFF_FACTOR,
     DEFAULT_LOCKOUT_DURATION,
+    DEFAULT_LOCKOUT_MAX_DURATION,
     DEFAULT_LOCKOUT_THRESHOLD,
     GraceMode,
     RejectionReason,
@@ -68,6 +70,13 @@ async def test_a_new_scope_reports_the_settings_in_effect(
     # defaults rather than a blank.
     assert number("number.front_door_lockout_threshold") == DEFAULT_LOCKOUT_THRESHOLD
     assert number("number.front_door_lockout_duration") == DEFAULT_LOCKOUT_DURATION
+    assert (
+        number("number.front_door_lockout_backoff_factor")
+        == DEFAULT_LOCKOUT_BACKOFF_FACTOR
+    )
+    assert (
+        number("number.front_door_lockout_max_duration") == DEFAULT_LOCKOUT_MAX_DURATION
+    )
 
 
 async def test_a_new_keypad_reports_the_settings_in_effect(
@@ -104,6 +113,12 @@ async def test_a_scope_number_survives_a_restart(hass: HomeAssistant, entry, sco
     await set_number(hass, "number.front_door_lockout_duration", 45)
 
     assert entry.subentries[scope.scope_id].data["lockout_duration"] == 45
+
+    await set_number(hass, "number.front_door_lockout_backoff_factor", 2)
+    await set_number(hass, "number.front_door_lockout_max_duration", 60)
+
+    assert entry.subentries[scope.scope_id].data["lockout_backoff_factor"] == 2
+    assert entry.subentries[scope.scope_id].data["lockout_max_duration"] == 60
 
 
 async def test_a_code_length_set_from_its_entity_governs_the_keypad(

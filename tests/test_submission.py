@@ -483,6 +483,72 @@ async def test_lockout_trips_and_then_recovers(hass: HomeAssistant, entry, coord
     assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
 
 
+async def test_lockout_escalates_and_then_caps(hass: HomeAssistant, coordinator):
+    scope = await coordinator.async_create_scope(
+        name="Gate",
+        lockout_threshold=3,
+        lockout_duration=10,
+        lockout_backoff_factor=2,
+        lockout_max_duration=30,
+    )
+
+    async def trip_lockout():
+        for _ in range(3):
+            await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+
+    now = dt_util.utcnow()
+
+    # First lockout: unaffected by the factor.
+    await trip_lockout()
+    runtime = coordinator.runtime(scope.scope_id)
+    assert runtime.lockout_streak == 1
+    assert runtime.locked_until is not None
+    assert (runtime.locked_until - now).total_seconds() == pytest.approx(10, abs=1)
+
+    # Second consecutive lockout, no success in between: duration doubles.
+    runtime.locked_until = None
+    await trip_lockout()
+    assert runtime.lockout_streak == 2
+    assert runtime.locked_until is not None
+    assert (runtime.locked_until - now).total_seconds() == pytest.approx(20, abs=1)
+
+    # Third: would be 40s uncapped, but lockout_max_duration caps it at 30s.
+    runtime.locked_until = None
+    await trip_lockout()
+    assert runtime.lockout_streak == 3
+    assert runtime.locked_until is not None
+    assert (runtime.locked_until - now).total_seconds() == pytest.approx(30, abs=1)
+
+
+async def test_a_success_resets_the_lockout_streak(hass: HomeAssistant, coordinator):
+    scope = await coordinator.async_create_scope(
+        name="Gate",
+        lockout_threshold=3,
+        lockout_duration=10,
+        lockout_backoff_factor=2,
+    )
+    _credential, code = await coordinator.async_create_credential(
+        label="Household", scope_ids=[scope.scope_id]
+    )
+    runtime = coordinator.runtime(scope.scope_id)
+
+    for _ in range(3):
+        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    assert runtime.lockout_streak == 1
+
+    runtime.locked_until = None
+    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert runtime.lockout_streak == 0
+
+    # Streak restarts from scratch after the success.
+    now = dt_util.utcnow()
+    for _ in range(3):
+        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    assert runtime.lockout_streak == 1
+    assert runtime.locked_until is not None
+    assert (runtime.locked_until - now).total_seconds() == pytest.approx(10, abs=1)
+
+
 async def test_a_success_clears_the_failure_counter(hass: HomeAssistant, coordinator):
     scope = await coordinator.async_create_scope(name="Gate", lockout_threshold=5)
     _credential, code = await coordinator.async_create_credential(

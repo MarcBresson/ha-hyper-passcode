@@ -11,7 +11,9 @@ from typing import Any
 from .const import (
     DEFAULT_GRACE_MODE,
     DEFAULT_INTER_KEY_TIMEOUT,
+    DEFAULT_LOCKOUT_BACKOFF_FACTOR,
     DEFAULT_LOCKOUT_DURATION,
+    DEFAULT_LOCKOUT_MAX_DURATION,
     DEFAULT_LOCKOUT_THRESHOLD,
     DEFAULT_TERMINATOR_KEYS,
     MAX_RECENT_USES,
@@ -37,6 +39,11 @@ def _int_or(value: Any, default: int) -> int:
     lock out -- and only an absent value should fall back to the default.
     """
     return default if value is None else int(value)
+
+
+def _float_or(value: Any, default: float) -> float:
+    """Read a float that may be missing or stored as None. See ``_int_or``."""
+    return default if value is None else float(value)
 
 
 def _dt_from_str(value: str | None) -> datetime | None:
@@ -374,6 +381,11 @@ class Scope:
     #: Failures before this scope stops accepting codes. Zero never locks out.
     lockout_threshold: int = DEFAULT_LOCKOUT_THRESHOLD
     lockout_duration: int = DEFAULT_LOCKOUT_DURATION
+    #: Multiplier applied to lockout_duration for each consecutive lockout since the
+    #: last success. 1.0 reproduces the old fixed-duration behaviour exactly.
+    lockout_backoff_factor: float = DEFAULT_LOCKOUT_BACKOFF_FACTOR
+    #: Hard cap on the escalated duration, in seconds. Zero means uncapped.
+    lockout_max_duration: int = DEFAULT_LOCKOUT_MAX_DURATION
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise for the store."""
@@ -383,6 +395,8 @@ class Scope:
             "default_actions": self.default_actions,
             "lockout_threshold": self.lockout_threshold,
             "lockout_duration": self.lockout_duration,
+            "lockout_backoff_factor": self.lockout_backoff_factor,
+            "lockout_max_duration": self.lockout_max_duration,
         }
 
     @classmethod
@@ -399,6 +413,12 @@ class Scope:
             ),
             lockout_duration=_int_or(
                 data.get("lockout_duration"), DEFAULT_LOCKOUT_DURATION
+            ),
+            lockout_backoff_factor=_float_or(
+                data.get("lockout_backoff_factor"), DEFAULT_LOCKOUT_BACKOFF_FACTOR
+            ),
+            lockout_max_duration=_int_or(
+                data.get("lockout_max_duration"), DEFAULT_LOCKOUT_MAX_DURATION
             ),
         )
 

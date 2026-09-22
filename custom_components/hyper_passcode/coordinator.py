@@ -150,7 +150,9 @@ class ScopeRuntime:
 
     Lockout deliberately does not survive a restart: a reboot is a plausible recovery
     path for a locked-out household, and persisting it would mostly serve to lock
-    people out for longer than intended.
+    people out for longer than intended. The escalation streak follows the same rule:
+    it lives here rather than in the store, and resets on any successful submission
+    just like ``failed_attempts`` does.
 
     The last-result fields are what the scope's "Last result" sensor reads. They are
     here rather than in the store for the same reason: a verdict is a live reading,
@@ -159,6 +161,8 @@ class ScopeRuntime:
 
     failed_attempts: int = 0
     locked_until: datetime | None = None
+    #: Consecutive lockouts tripped since the last successful submission.
+    lockout_streak: int = 0
     last_used: datetime | None = None
     last_label: str | None = None
     last_credential_id: str | None = None
@@ -615,21 +619,31 @@ class HyperPasscodeCoordinator:
         runtime.failed_attempts += 1
         threshold = scope.lockout_threshold
         if threshold > 0 and runtime.failed_attempts >= threshold:
-            runtime.locked_until = now + timedelta(seconds=scope.lockout_duration)
+            runtime.lockout_streak += 1
+            duration = scope.lockout_duration * (
+                scope.lockout_backoff_factor ** (runtime.lockout_streak - 1)
+            )
+            if scope.lockout_max_duration > 0:
+                duration = min(duration, scope.lockout_max_duration)
+            runtime.locked_until = now + timedelta(seconds=duration)
             runtime.failed_attempts = 0
             _LOGGER.warning(
-                "Scope %s locked out until %s after %s failed attempts",
+                "Scope %s locked out until %s after %s failed attempts "
+                "(streak %s, duration %ss)",
                 scope.name,
                 runtime.locked_until,
                 threshold,
+                runtime.lockout_streak,
+                duration,
             )
         async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope.scope_id))
 
     def _reset_failures(self, scope_id: str) -> None:
-        """Clear the failure counter after a success."""
+        """Clear the failure counter and escalation streak after a success."""
         runtime = self.runtime(scope_id)
         runtime.failed_attempts = 0
         runtime.locked_until = None
+        runtime.lockout_streak = 0
         async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope_id))
 
     def _record_audit(

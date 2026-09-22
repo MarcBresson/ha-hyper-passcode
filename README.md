@@ -48,6 +48,9 @@ Entry
   the scope it targets. Several keypads can target the same scope
 - Brute-force lockout, with a threshold and duration that can be set per scope or left to
   inherit the integration-wide default
+- Escalating lockout: each consecutive lockout since the last success can multiply the
+  duration, up to a per-scope cap, so a scripted brute-force can't just wait out the
+  same short cooldown forever
 
 Automations
 
@@ -81,6 +84,8 @@ Settings, editable from the device page, a dashboard or an automation:
 |---|---|---|
 | `number.<scope>_lockout_threshold` | scope | Failures before lockout, `5` by default. `0` disables it |
 | `number.<scope>_lockout_duration` | scope | How long a lockout lasts, `300s` by default |
+| `number.<scope>_lockout_backoff_factor` | scope | Multiplies the duration on each consecutive lockout, `1` (off) by default |
+| `number.<scope>_lockout_max_duration` | scope | Caps the escalated duration, `3600s` by default. `0` is uncapped |
 | `number.<keypad>_code_length` | keypad | Auto-submit at this length. `0` waits for a terminator |
 | `text.<keypad>_terminator_keys` | keypad | Comma-separated keys that submit the buffer, `#` by default |
 | `number.<keypad>_inter_key_timeout` | keypad | Seconds before a half-typed code is dropped |
@@ -399,8 +404,11 @@ itself after `inter_key_timeout` seconds so a half-typed code doesn't linger.
 
 Lockout is not here: it belongs to the door rather than the integration, since a keypad on the
 street and a panel in the hallway want different answers. Each scope carries its own
-`number.<scope>_lockout_threshold` (5) and `number.<scope>_lockout_duration` (300s), editable
-from the scope's device page, a dashboard or an automation.
+`number.<scope>_lockout_threshold` (5) and `number.<scope>_lockout_duration` (300s), plus
+`number.<scope>_lockout_backoff_factor` (1, i.e. off) and `number.<scope>_lockout_max_duration`
+(3600s) for escalating the duration on consecutive lockouts, all editable from the scope's
+device page, a dashboard or an automation. The escalation streak resets on the first
+successful code, the same way the failure counter does.
 
 Lockout moved out of these settings in 0.1.3, and there is no migration: if you had tuned the
 integration-wide values, set them again on each scope that needs them.

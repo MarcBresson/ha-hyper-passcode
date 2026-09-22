@@ -8,9 +8,10 @@ did.
 
 A number entity cannot hold ``None``, so every field that used to mean "leave it
 blank" encodes that as zero: no fixed code length, unlimited uses, no cooldown. The
-two lockout numbers are the exception, because zero already means "never lock out"
-there. They start at the per-scope defaults and are a plain reading of what that
-scope stores -- lockout belongs to the door, not to the integration.
+lockout numbers are the exception, because zero already means "never lock out" (or,
+for the escalation cap, "uncapped") there. They start at the per-scope defaults and
+are a plain reading of what that scope stores -- lockout belongs to the door, not to
+the integration.
 """
 
 from collections.abc import Callable
@@ -102,6 +103,32 @@ SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
         native_max_value=86400,
         native_step=1,
         value_fn=lambda scope: scope.lockout_duration,
+        to_stored=int,
+    ),
+    ScopeNumberDescription(
+        key="lockout_backoff_factor",
+        translation_key="lockout_backoff_factor",
+        icon="mdi:trending-up",
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        native_min_value=1,
+        native_max_value=10,
+        native_step=0.5,
+        value_fn=lambda scope: scope.lockout_backoff_factor,
+        to_stored=float,
+    ),
+    ScopeNumberDescription(
+        key="lockout_max_duration",
+        translation_key="lockout_max_duration",
+        icon="mdi:timer-lock-open-outline",
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        device_class=NumberDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        native_min_value=0,
+        native_max_value=86400,
+        native_step=1,
+        value_fn=lambda scope: scope.lockout_max_duration,
         to_stored=int,
     ),
 )

@@ -188,6 +188,12 @@ CREATE_SCOPE_SCHEMA = vol.Schema(
         vol.Optional("default_actions"): cv.SCRIPT_SCHEMA,
         vol.Optional("lockout_threshold"): vol.All(vol.Coerce(int), vol.Range(min=0)),
         vol.Optional("lockout_duration"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("lockout_backoff_factor"): vol.All(
+            vol.Coerce(float), vol.Range(min=1)
+        ),
+        vol.Optional("lockout_max_duration"): vol.All(
+            vol.Coerce(int), vol.Range(min=0)
+        ),
     }
 )
 

@@ -274,6 +274,8 @@
       "inter_key_timeout": { "name": "Inter-key timeout" },
       "lockout_threshold": { "name": "Lockout threshold" },
       "lockout_duration": { "name": "Lockout duration" },
+      "lockout_backoff_factor": { "name": "Lockout backoff factor" },
+      "lockout_max_duration": { "name": "Lockout max duration" },
       "max_uses": { "name": "Max uses" },
       "uses_per_hour": { "name": "Uses per hour" },
       "uses_per_day": { "name": "Uses per day" },
@@ -442,7 +444,9 @@
         "name": { "name": "Name", "description": "What this scope is called." },
         "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered, so the common case needs no automation at all." },
         "lockout_threshold": { "name": "Failed attempts before lockout", "description": "How many failures in a row stop this scope accepting codes. 0 disables lockout entirely. Defaults to 5." },
-        "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds. Defaults to 300." }
+        "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds. Defaults to 300." },
+        "lockout_backoff_factor": { "name": "Lockout backoff factor", "description": "Multiplies the lockout duration for each consecutive lockout since the last success. 1 disables escalation. Defaults to 1." },
+        "lockout_max_duration": { "name": "Max lockout duration", "description": "Caps the escalated lockout duration, in seconds. 0 means uncapped. Defaults to 3600." }
       }
     },
     "update_scope": {
@@ -453,7 +457,9 @@
         "name": { "name": "Name", "description": "What this scope is called." },
         "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered." },
         "lockout_threshold": { "name": "Failed attempts before lockout", "description": "How many failures in a row stop this scope accepting codes. 0 disables lockout entirely." },
-        "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds." }
+        "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds." },
+        "lockout_backoff_factor": { "name": "Lockout backoff factor", "description": "Multiplies the lockout duration for each consecutive lockout since the last success. 1 disables escalation." },
+        "lockout_max_duration": { "name": "Max lockout duration", "description": "Caps the escalated lockout duration, in seconds. 0 means uncapped." }
       }
     },
     "delete_scope": {

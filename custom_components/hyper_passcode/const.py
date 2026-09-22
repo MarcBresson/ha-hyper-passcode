@@ -69,6 +69,8 @@ DEFAULT_INTER_KEY_TIMEOUT: Final = 10.0  # seconds
 DEFAULT_TERMINATOR_KEYS: Final[list[str]] = ["#"]
 DEFAULT_LOCKOUT_THRESHOLD: Final = 5
 DEFAULT_LOCKOUT_DURATION: Final = 300  # seconds
+DEFAULT_LOCKOUT_BACKOFF_FACTOR: Final = 1.0
+DEFAULT_LOCKOUT_MAX_DURATION: Final = 3600  # seconds
 
 # How many recent use timestamps to retain per credential for rate limiting.
 MAX_RECENT_USES: Final = 100
