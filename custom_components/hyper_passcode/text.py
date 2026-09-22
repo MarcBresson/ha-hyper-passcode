@@ -1,4 +1,4 @@
-"""Texts: a scope's terminator keys, and a credential's notes.
+"""Texts: a keypad buffer's terminator keys, and a credential's notes.
 
 The terminator keys are a list in the model and a single comma-separated string here,
 because a text entity holds one value. Splitting on commas is enough: a keypad that
@@ -22,22 +22,22 @@ from . import HyperPasscodeConfigEntry
 from .coordinator import HyperPasscodeCoordinator
 from .entity import (
     HyperPasscodeCredentialEntity,
-    HyperPasscodeScopeEntity,
+    HyperPasscodeKeypadEntity,
     async_add_credential_entities,
-    async_add_scope_entities,
+    async_add_keypad_entities,
 )
-from .models import Credential, Scope
+from .models import Credential, Keypad
 
 #: The longest value Home Assistant will accept as an entity state.
 MAX_TEXT_LENGTH = 255
 
 
 @dataclass(frozen=True, kw_only=True)
-class ScopeTextDescription(TextEntityDescription):
-    """One editable free-text field on a scope."""
+class KeypadTextDescription(TextEntityDescription):
+    """One editable free-text field on a keypad buffer."""
 
-    value_fn: Callable[[Scope], str]
-    #: Turns what was typed into what the scope stores under ``key``.
+    value_fn: Callable[[Keypad], str]
+    #: Turns what was typed into what the keypad stores under ``key``.
     to_stored: Callable[[str], Any]
 
 
@@ -55,15 +55,15 @@ def _split_list(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-SCOPE_TEXTS: tuple[ScopeTextDescription, ...] = (
-    ScopeTextDescription(
+KEYPAD_TEXTS: tuple[KeypadTextDescription, ...] = (
+    KeypadTextDescription(
         key="terminator_keys",
         translation_key="terminator_keys",
         icon="mdi:keyboard-return",
         entity_category=EntityCategory.CONFIG,
         mode=TextMode.TEXT,
         native_max=MAX_TEXT_LENGTH,
-        value_fn=lambda scope: ", ".join(scope.terminator_keys),
+        value_fn=lambda keypad: ", ".join(keypad.terminator_keys),
         to_stored=_split_list,
     ),
 )
@@ -88,14 +88,14 @@ async def async_setup_entry(
     entry: HyperPasscodeConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the free-text fields on every scope and every credential."""
+    """Set up the free-text fields on every keypad buffer and every credential."""
     coordinator = entry.runtime_data
-    async_add_scope_entities(
+    async_add_keypad_entities(
         hass,
         entry,
         coordinator,
         async_add_entities,
-        [partial(ScopeText, description=d) for d in SCOPE_TEXTS],
+        [partial(KeypadText, description=d) for d in KEYPAD_TEXTS],
     )
     async_add_credential_entities(
         hass,
@@ -106,34 +106,34 @@ async def async_setup_entry(
     )
 
 
-class ScopeText(TextEntity, HyperPasscodeScopeEntity):
-    """One free-text field on a scope."""
+class KeypadText(TextEntity, HyperPasscodeKeypadEntity):
+    """One free-text field on a keypad buffer."""
 
-    entity_description: ScopeTextDescription
+    entity_description: KeypadTextDescription
 
     def __init__(
         self,
         coordinator: HyperPasscodeCoordinator,
-        scope: Scope,
-        description: ScopeTextDescription,
+        keypad: Keypad,
+        description: KeypadTextDescription,
     ) -> None:
         """Set the entity's identity."""
-        super().__init__(coordinator, scope)
+        super().__init__(coordinator, keypad)
         self.entity_description = description
-        self._attr_unique_id = f"{scope.scope_id}_{description.key}"
+        self._attr_unique_id = f"{keypad.keypad_id}_{description.key}"
 
     @property
     def native_value(self) -> str | None:
         """The current text, truncated to what a state can hold."""
-        scope = self.scope
-        if scope is None:
+        keypad = self.keypad
+        if keypad is None:
             return None
-        return self.entity_description.value_fn(scope)[:MAX_TEXT_LENGTH]
+        return self.entity_description.value_fn(keypad)[:MAX_TEXT_LENGTH]
 
     async def async_set_value(self, value: str) -> None:
-        """Write the new text back to the scope's subentry."""
-        await self.coordinator.async_update_scope(
-            self.scope_id,
+        """Write the new text back to the keypad's subentry."""
+        await self.coordinator.async_update_keypad(
+            self.keypad_id,
             {self.entity_description.key: self.entity_description.to_stored(value)},
         )
 

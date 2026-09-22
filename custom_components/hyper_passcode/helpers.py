@@ -10,8 +10,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 
-from .const import CREDENTIAL_DEVICE_PREFIX, DOMAIN
+from .const import CREDENTIAL_DEVICE_PREFIX, DOMAIN, KEYPAD_DEVICE_PREFIX
 from .coordinator import HyperPasscodeCoordinator
+
+#: A scope's own device identifier carries no prefix, unlike a credential's or a
+#: keypad's, so a scope is whatever is left once those two are excluded.
+_NON_SCOPE_PREFIXES = (f"{CREDENTIAL_DEVICE_PREFIX}_", f"{KEYPAD_DEVICE_PREFIX}_")
 
 
 @callback
@@ -21,9 +25,8 @@ def async_scope_id_for_device(hass: HomeAssistant, device_id: str) -> str | None
     if device is None:
         return None
 
-    prefix = f"{CREDENTIAL_DEVICE_PREFIX}_"
     for domain, identifier in device.identifiers:
-        if domain == DOMAIN and not identifier.startswith(prefix):
+        if domain == DOMAIN and not identifier.startswith(_NON_SCOPE_PREFIXES):
             return identifier
     return None
 

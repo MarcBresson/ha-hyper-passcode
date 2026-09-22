@@ -252,7 +252,7 @@ def test_per_grant_policy_overrides_the_credential_policy():
 
 
 def test_scope_and_audit_round_trip():
-    scope = Scope(scope_id="s", name="Gate", code_length=4)
+    scope = Scope(scope_id="s", name="Gate", lockout_threshold=2)
     assert Scope.from_dict(scope.to_dict()).to_dict() == scope.to_dict()
 
     entry = AuditEntry(
@@ -289,9 +289,6 @@ async def test_the_integration_loads_from_both_stores(
             ConfigSubentryData(
                 data={
                     "default_actions": [{"event": "opened"}],
-                    "code_length": 6,
-                    "terminator_keys": ["#", "*"],
-                    "inter_key_timeout": 8.0,
                     "lockout_threshold": 4,
                     "lockout_duration": 120,
                 },
@@ -319,11 +316,21 @@ async def test_the_integration_loads_from_both_stores(
 
     (scope,) = coordinator.scopes.values()
     assert scope.name == "Front Door"
-    assert scope.terminator_keys == ["#", "*"]
-    assert scope.code_length == 6
     # The scope's own lockout settings are restored as they were stored.
     assert scope.lockout_threshold == 4
     assert scope.lockout_duration == 120
+
+    # Buffering settings are restored the same way, but on the keypad's subentry.
+    keypad = await coordinator.async_create_keypad(
+        name="Front panel",
+        scope_id=scope.scope_id,
+        code_length=6,
+        terminator_keys=["#", "*"],
+        inter_key_timeout=8.0,
+    )
+    assert coordinator.keypads[keypad.keypad_id].code_length == 6
+    assert coordinator.keypads[keypad.keypad_id].terminator_keys == ["#", "*"]
+    assert coordinator.keypads[keypad.keypad_id].inter_key_timeout == 8.0
 
 
 async def test_scope_lockout_defaults_when_unset(

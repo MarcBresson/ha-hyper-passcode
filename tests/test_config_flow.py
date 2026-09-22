@@ -9,6 +9,7 @@ from homeassistant import config_entries
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import TextSelectorType
 from pytest_homeassistant_custom_component.common import async_capture_events
@@ -19,12 +20,14 @@ from custom_components.hyper_passcode.const import (
     DEFAULT_LOCKOUT_THRESHOLD,
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
+    SUBENTRY_TYPE_KEYPAD,
     SUBENTRY_TYPE_SCOPE,
     GraceMode,
     Outcome,
     RejectionReason,
     Source,
     StoreMethod,
+    keypad_device_identifier,
 )
 from custom_components.hyper_passcode.models import Policy
 from tests.helpers import set_number, set_select, set_text, state_of
@@ -135,7 +138,6 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
     scope_id = await add_scope(hass, entry)
     coordinator = entry.runtime_data
     await set_number(hass, "number.front_door_lockout_threshold", 9)
-    await set_text(hass, "text.front_door_terminator_keys", "*")
 
     # Something worth preserving across an edit.
     await coordinator.async_submit(scope_id, "000111", Source.KEYPAD)
@@ -158,10 +160,9 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
 
     scope = entry.runtime_data.scopes[scope_id]
     assert scope.name == "Back Door"
-    # The dialog does not show the lockout settings or the terminator keys any
-    # more, so it must not wipe what those entities wrote either.
+    # The dialog does not show the lockout settings any more, so it must not wipe
+    # what that entity wrote either.
     assert scope.lockout_threshold == 9
-    assert scope.terminator_keys == ["*"]
     # Editing a scope must not reset counters or half-typed codes.
     assert entry.runtime_data.runtime(scope_id).failed_attempts == 1
 
@@ -176,6 +177,134 @@ async def test_deleting_a_scope_removes_its_entities(hass: HomeAssistant, entry)
 
     assert registry.async_get_entity_id("event", DOMAIN, f"{scope_id}_code") is None
     assert scope_id not in entry.runtime_data.scopes
+
+
+async def add_keypad(hass: HomeAssistant, entry, scope_id: str, **fields) -> str:
+    """Add a keypad buffer through the subentry flow, returning its id."""
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_KEYPAD),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"name": "Keypad", "scope_id": scope_id, **fields}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+    keypad_id = next(
+        sid
+        for sid, sub in entry.subentries.items()
+        if sub.subentry_type == SUBENTRY_TYPE_KEYPAD
+    )
+    return keypad_id
+
+
+async def test_the_integration_offers_a_keypad_subentry(hass: HomeAssistant, entry):
+    handler = config_entries.HANDLERS[DOMAIN]
+    assert SUBENTRY_TYPE_KEYPAD in handler.async_get_supported_subentry_types(entry)
+
+
+async def test_adding_a_keypad_without_a_scope_is_refused(hass: HomeAssistant, entry):
+    # There is nothing for a keypad to submit against yet.
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_KEYPAD),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_scopes"
+
+
+async def test_adding_a_keypad_creates_its_entities_nested_under_its_scope(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(hass, entry)
+    keypad_id = await add_keypad(hass, entry, scope_id)
+    coordinator = entry.runtime_data
+
+    keypad = coordinator.keypads[keypad_id]
+    assert keypad.name == "Keypad"
+    assert keypad.scope_id == scope_id
+
+    registry = er.async_get(hass)
+    for platform, suffix in (
+        ("number", "code_length"),
+        ("number", "inter_key_timeout"),
+        ("text", "terminator_keys"),
+    ):
+        entity_id = registry.async_get_entity_id(
+            platform, DOMAIN, f"{keypad_id}_{suffix}"
+        )
+        assert entity_id, f"{platform}.{suffix} was not created"
+        registered = registry.async_get(entity_id)
+        assert registered is not None
+        assert registered.config_subentry_id == keypad_id
+
+    device_registry = dr.async_get(hass)
+    keypad_device = device_registry.async_get_device_by_identifier(
+        keypad_device_identifier(keypad_id), entry.entry_id
+    )
+    scope_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, scope_id), entry.entry_id
+    )
+    assert keypad_device is not None
+    assert scope_device is not None
+    assert keypad_device.via_device_id == scope_device.id
+
+
+async def test_reconfiguring_a_keypad_keeps_its_runtime_state(
+    hass: HomeAssistant, entry
+):
+    scope_id = await add_scope(hass, entry)
+    keypad_id = await add_keypad(hass, entry, scope_id)
+    coordinator = entry.runtime_data
+    await set_number(hass, "number.keypad_code_length", 6)
+    await set_text(hass, "text.keypad_terminator_keys", "*")
+
+    # Something worth preserving across an edit.
+    await coordinator.async_submit_key(keypad_id, "1")
+    assert coordinator.keypad_runtime(keypad_id).buffer == "1"
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_KEYPAD),
+        context={
+            "source": "reconfigure",
+            "subentry_id": keypad_id,
+        },
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"name": "Rear panel", "scope_id": scope_id}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+
+    keypad = entry.runtime_data.keypads[keypad_id]
+    assert keypad.name == "Rear panel"
+    # The dialog does not show the buffering settings any more, so it must not
+    # wipe what those entities wrote either.
+    assert keypad.code_length == 6
+    assert keypad.terminator_keys == ["*"]
+    # Editing a keypad must not reset a half-typed code.
+    assert entry.runtime_data.keypad_runtime(keypad_id).buffer == "1"
+
+
+async def test_deleting_a_keypad_removes_its_entities(hass: HomeAssistant, entry):
+    scope_id = await add_scope(hass, entry)
+    keypad_id = await add_keypad(hass, entry, scope_id)
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("number", DOMAIN, f"{keypad_id}_code_length")
+
+    assert hass.config_entries.async_remove_subentry(entry, keypad_id)
+    await hass.async_block_till_done()
+
+    assert (
+        registry.async_get_entity_id("number", DOMAIN, f"{keypad_id}_code_length")
+        is None
+    )
+    assert keypad_id not in entry.runtime_data.keypads
 
 
 async def open_options(

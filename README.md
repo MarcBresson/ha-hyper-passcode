@@ -43,7 +43,9 @@ Validity
 Entry
 
 - `submit` for a whole code, `submit_key` for one keystroke at a time
-- Keystroke buffering with a terminator key, fixed-length auto-submit and an idle timeout
+- A keypad buffer device turns raw keystrokes from one physical keypad into a code:
+  a terminator key, fixed-length auto-submit and an idle timeout, submitted against
+  the scope it targets. Several keypads can target the same scope
 - Brute-force lockout, with a threshold and duration that can be set per scope or left to
   inherit the integration-wide default
 
@@ -77,11 +79,11 @@ Settings, editable from the device page, a dashboard or an automation:
 
 | Entity | Per | Purpose |
 |---|---|---|
-| `number.<scope>_code_length` | scope | Auto-submit at this length. `0` waits for a terminator |
-| `text.<scope>_terminator_keys` | scope | Comma-separated keys that submit the buffer, `#` by default |
-| `number.<scope>_inter_key_timeout` | scope | Seconds before a half-typed code is dropped |
 | `number.<scope>_lockout_threshold` | scope | Failures before lockout, `5` by default. `0` disables it |
 | `number.<scope>_lockout_duration` | scope | How long a lockout lasts, `300s` by default |
+| `number.<keypad>_code_length` | keypad | Auto-submit at this length. `0` waits for a terminator |
+| `text.<keypad>_terminator_keys` | keypad | Comma-separated keys that submit the buffer, `#` by default |
+| `number.<keypad>_inter_key_timeout` | keypad | Seconds before a half-typed code is dropped |
 | `number.<code>_max_uses` | code | Lifetime limit. `0` is unlimited |
 | `number.<code>_uses_per_hour` | code | Rolling hourly limit. `0` is unlimited |
 | `number.<code>_uses_per_day` | code | Rolling 24-hour limit. `0` is unlimited |
@@ -123,13 +125,12 @@ Go to Settings → Devices & Services → HyperPasscode and press **Add scope**.
 name, and optionally default actions to run whenever a valid code is entered
 here — which is what lets the common case work without any automation at all.
 
-Everything else about a scope lives on its device: the code length, the inter-key
-timeout and the two lockout settings as numbers, and the terminator keys as a
-comma-separated text. Open the scope's device page to change them, or set them from an
-automation like any other entity.
+Everything else about a scope lives on its device: the two lockout settings, as numbers.
+Open the scope's device page to change them, or set them from an automation like any
+other entity.
 
 Scopes can be edited or deleted from the integration page afterwards. Editing one takes
-effect immediately and leaves its lockout counters and any half-typed code alone.
+effect immediately and leaves its lockout counters alone.
 
 Everything below is also exposed as an action, so a scope can be created from Developer
 Tools → Actions or from an automation instead:
@@ -146,7 +147,29 @@ data:
 
 Note the returned `scope_id`, which the remaining steps need.
 
-### 2. Add a code
+### 2. Add a keypad buffer
+
+If you have a physical keypad, add a keypad buffer to turn its raw keystrokes into
+codes. Press **Add keypad buffer**, give it a name and pick the scope it submits
+completed codes against. Several keypads can target the same scope — a front panel and
+a rear panel on the same door, for instance.
+
+Everything about how it buffers keystrokes lives on its own device: `code_length`,
+`terminator_keys` and `inter_key_timeout` as entities, editable the same way as a
+scope's. Skip this step if you only ever submit whole codes with `submit`, from the web
+UI or a service call.
+
+As an action:
+
+```yaml
+action: hyper_passcode.create_keypad
+data:
+  name: Front panel
+  scope_id: "<scope_id>"
+  code_length: 6
+```
+
+### 3. Add a code
 
 Press **Add code** on the same page. Give it a name, pick which scopes it opens, and leave
 the code blank to have one generated.
@@ -179,7 +202,7 @@ response_variable: result
 
 The generated code comes back in `result.code`, and is only shown once.
 
-### 3. Submit a code
+### 4. Submit a code
 
 From the keypad card, an ESPHome keypad, a webhook, or by hand:
 
@@ -349,18 +372,19 @@ Nothing is recorded, no use is counted and no action runs.
 
 ## Physical keypads
 
-Real keypads send one event per keystroke, so feed them through `submit_key`:
+Real keypads send one event per keystroke, so feed them through `submit_key`, addressed to
+a keypad buffer rather than a scope directly:
 
 ```yaml
 action: hyper_passcode.submit_key
 data:
-  scope_id: "<scope_id>"
+  keypad_id: "<keypad_id>"
   key: "{{ trigger.event.data.key }}"
 ```
 
-The buffer submits when it sees a terminator key (`#` by default), or automatically once it
-reaches the scope's `code_length`. It clears itself after `inter_key_timeout` seconds so a
-half-typed code doesn't linger.
+The buffer submits — against the scope the keypad targets — when it sees a terminator key
+(`#` by default), or automatically once it reaches the keypad's `code_length`. It clears
+itself after `inter_key_timeout` seconds so a half-typed code doesn't linger.
 
 ## Settings
 
@@ -386,9 +410,10 @@ audit log unattributable, which defeats the point of the monitoring.
 
 ## How things are laid out
 
-Scopes and codes each become a device. A code granted on exactly one scope is linked to
-that scope's device, so the scope's page lists the codes that open it rather than leaving
-both kinds in one flat list. A code granted on several stays top level: grants are
+Scopes, keypad buffers and codes each become a device. A keypad buffer always targets
+exactly one scope, so its device nests under that scope's — the scope's page lists both
+the codes that open it and the keypads that feed it. A code granted on exactly one scope
+is linked the same way. A code granted on several stays top level: grants are
 many-to-many, and nesting it under one of its scopes would hide the others.
 
 Almost every setting sits on one of those devices as an entity rather than in a dialog.
@@ -401,8 +426,9 @@ set from a dashboard persists exactly as a dialog field did.
 
 ## How things are stored
 
-Scopes and codes are Home Assistant config subentries, which is what gives them the
-Add and Edit buttons. Only their *configuration* lives there. Config entries are not
+Scopes, keypad buffers and codes are Home Assistant config subentries, which is what
+gives them the Add and Edit buttons. Only their *configuration* lives there. Config
+entries are not
 written with restricted permissions, so the code itself never goes in one: the lookup
 index, any viewable copy, and the use counters live in the integration's own store,
 which is written private and atomically.

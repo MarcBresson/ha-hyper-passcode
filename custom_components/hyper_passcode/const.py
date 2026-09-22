@@ -8,24 +8,32 @@ DOMAIN: Final = "hyper_passcode"
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
 
-#: Scopes and credentials are config subentries, which is what gives them "Add"
-#: buttons on the integration page and configure dialogs of their own.
+#: Scopes, credentials and keypad buffers are config subentries, which is what gives
+#: them "Add" buttons on the integration page and configure dialogs of their own.
 SUBENTRY_TYPE_SCOPE: Final = "scope"
 SUBENTRY_TYPE_CREDENTIAL: Final = "credential"
+SUBENTRY_TYPE_KEYPAD: Final = "keypad"
 
-#: Credential device identifiers are prefixed so they can never be confused with a
-#: scope's, whatever ids happen to be generated.
+#: Credential and keypad device identifiers are prefixed so they can never be
+#: confused with a scope's, whatever ids happen to be generated.
 CREDENTIAL_DEVICE_PREFIX: Final = "credential"
+KEYPAD_DEVICE_PREFIX: Final = "keypad"
 
-# How the two device kinds present themselves in the device registry.
+# How the three device kinds present themselves in the device registry.
 DEVICE_MANUFACTURER: Final = "HyperPasscode"
 DEVICE_MODEL_SCOPE: Final = "Passcode scope"
 DEVICE_MODEL_CREDENTIAL: Final = "Credential"
+DEVICE_MODEL_KEYPAD: Final = "Keypad buffer"
 
 
 def credential_device_identifier(credential_id: str) -> tuple[str, str]:
     """Return the device registry identifier for a credential."""
     return (DOMAIN, f"{CREDENTIAL_DEVICE_PREFIX}_{credential_id}")
+
+
+def keypad_device_identifier(keypad_id: str) -> tuple[str, str]:
+    """Return the device registry identifier for a keypad buffer."""
+    return (DOMAIN, f"{KEYPAD_DEVICE_PREFIX}_{keypad_id}")
 
 
 def credential_code_unique_id(credential_id: str) -> str:
@@ -179,6 +187,7 @@ SERVICE_EXPORT_AUDIT: Final = "export_audit"
 
 # Common attribute / field names.
 ATTR_SCOPE_ID: Final = "scope_id"
+ATTR_KEYPAD_ID: Final = "keypad_id"
 ATTR_CREDENTIAL_ID: Final = "credential_id"
 ATTR_CODE: Final = "code"
 ATTR_KEY: Final = "key"

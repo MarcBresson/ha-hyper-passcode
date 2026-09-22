@@ -85,7 +85,7 @@
       "step": {
         "user": {
           "title": "Add scope",
-          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.\n\nCode length, inter-key timeout, the terminator keys and the lockout settings all live on that device, so they can be tuned without coming back here.",
+          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.\n\nThe lockout settings live on that device, so they can be tuned without coming back here. Add a keypad buffer separately to turn raw keystrokes into codes for this scope.",
           "data": {
             "name": "Name",
             "default_actions": "Default actions"
@@ -103,6 +103,40 @@
           },
           "data_description": {
             "default_actions": "Run whenever a valid code is entered here."
+          }
+        }
+      }
+    },
+    "keypad": {
+      "entry_type": "Keypad buffer",
+      "initiate_flow": {
+        "user": "Add keypad buffer"
+      },
+      "abort": {
+        "reconfigure_successful": "Keypad buffer updated.",
+        "no_scopes": "There are no scopes yet. Add one from the integration page first, then a keypad buffer will have something to target."
+      },
+      "step": {
+        "user": {
+          "title": "Add keypad buffer",
+          "description": "A keypad buffer turns a stream of raw keystrokes from one physical keypad into a code, and submits it against the scope you pick here. Several keypads can target the same scope.\n\nCode length, terminator keys and the inter-key timeout are entities on the keypad's own device once it exists.",
+          "data": {
+            "name": "Name",
+            "scope_id": "Scope"
+          },
+          "data_description": {
+            "scope_id": "The scope a completed code is submitted against."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit keypad buffer",
+          "description": "Changes take effect immediately. A half-typed code is left alone.",
+          "data": {
+            "name": "Name",
+            "scope_id": "Scope"
+          },
+          "data_description": {
+            "scope_id": "The scope a completed code is submitted against."
           }
         }
       }
@@ -276,9 +310,9 @@
     },
     "submit_key": {
       "name": "Submit keystroke",
-      "description": "Feeds one keystroke into a scope's buffer. Submits on a terminator key or at the scope's fixed code length, and clears itself after the inter-key timeout.",
+      "description": "Feeds one keystroke into a keypad buffer. Submits on a terminator key or at the keypad's fixed code length, and clears itself after the inter-key timeout.",
       "fields": {
-        "scope_id": { "name": "Scope", "description": "The scope being typed into." },
+        "keypad_id": { "name": "Keypad buffer", "description": "The keypad being typed into." },
         "key": { "name": "Key", "description": "The single key that was pressed." },
         "source": { "name": "Source", "description": "Where the keystroke came from." }
       }
@@ -287,7 +321,7 @@
       "name": "Clear buffer",
       "description": "Discards a partially entered code.",
       "fields": {
-        "scope_id": { "name": "Scope", "description": "The scope whose buffer to clear." }
+        "keypad_id": { "name": "Keypad buffer", "description": "The keypad whose buffer to clear." }
       }
     },
     "test_code": {
@@ -407,9 +441,6 @@
       "fields": {
         "name": { "name": "Name", "description": "What this scope is called." },
         "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered, so the common case needs no automation at all." },
-        "code_length": { "name": "Code length", "description": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key." },
-        "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer, typically # or *." },
-        "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long without a keystroke." },
         "lockout_threshold": { "name": "Failed attempts before lockout", "description": "How many failures in a row stop this scope accepting codes. 0 disables lockout entirely. Defaults to 5." },
         "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds. Defaults to 300." }
       }
@@ -421,9 +452,6 @@
         "scope_id": { "name": "Scope", "description": "The scope to change." },
         "name": { "name": "Name", "description": "What this scope is called." },
         "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered." },
-        "code_length": { "name": "Code length", "description": "Submit automatically at this length." },
-        "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer." },
-        "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long." },
         "lockout_threshold": { "name": "Failed attempts before lockout", "description": "How many failures in a row stop this scope accepting codes. 0 disables lockout entirely." },
         "lockout_duration": { "name": "Lockout duration", "description": "How long the lockout lasts, in seconds." }
       }
@@ -433,6 +461,36 @@
       "description": "Removes a scope, its device and every grant pointing at it.",
       "fields": {
         "scope_id": { "name": "Scope", "description": "The scope to delete." }
+      }
+    },
+    "create_keypad": {
+      "name": "Create keypad buffer",
+      "description": "Adds a keypad buffer that turns raw keystrokes from one physical keypad into a code and submits it against a scope. Becomes a device carrying its own entities.",
+      "fields": {
+        "name": { "name": "Name", "description": "What this keypad buffer is called." },
+        "scope_id": { "name": "Scope", "description": "The scope a completed code is submitted against." },
+        "code_length": { "name": "Code length", "description": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key." },
+        "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer, typically # or *." },
+        "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long without a keystroke." }
+      }
+    },
+    "update_keypad": {
+      "name": "Update keypad buffer",
+      "description": "Changes a keypad buffer's configuration.",
+      "fields": {
+        "keypad_id": { "name": "Keypad buffer", "description": "The keypad buffer to change." },
+        "name": { "name": "Name", "description": "What this keypad buffer is called." },
+        "scope_id": { "name": "Scope", "description": "The scope a completed code is submitted against." },
+        "code_length": { "name": "Code length", "description": "Submit automatically at this length." },
+        "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer." },
+        "inter_key_timeout": { "name": "Inter-key timeout", "description": "Clear a half-typed code after this long." }
+      }
+    },
+    "delete_keypad": {
+      "name": "Delete keypad buffer",
+      "description": "Removes a keypad buffer and its device.",
+      "fields": {
+        "keypad_id": { "name": "Keypad buffer", "description": "The keypad buffer to delete." }
       }
     }
   },

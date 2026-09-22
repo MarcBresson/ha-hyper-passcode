@@ -68,23 +68,33 @@ async def test_a_new_scope_reports_the_settings_in_effect(
     # defaults rather than a blank.
     assert number("number.front_door_lockout_threshold") == DEFAULT_LOCKOUT_THRESHOLD
     assert number("number.front_door_lockout_duration") == DEFAULT_LOCKOUT_DURATION
-    assert number("number.front_door_inter_key_timeout") == DEFAULT_INTER_KEY_TIMEOUT
+
+
+async def test_a_new_keypad_reports_the_settings_in_effect(
+    hass: HomeAssistant, entry, keypad
+):
+    await hass.async_block_till_done()
+
+    def number(entity_id: str) -> float:
+        return float(state_of(hass, entity_id).state)
+
+    assert number("number.keypad_inter_key_timeout") == DEFAULT_INTER_KEY_TIMEOUT
     # Zero is how a number entity says "no fixed length, wait for a terminator".
-    assert number("number.front_door_code_length") == 0
+    assert number("number.keypad_code_length") == 0
 
 
-async def test_a_scope_number_writes_through_to_the_scope(
-    hass: HomeAssistant, entry, scope
+async def test_a_keypad_number_writes_through_to_the_keypad(
+    hass: HomeAssistant, entry, keypad
 ):
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
 
-    await set_number(hass, "number.front_door_code_length", 4)
-    assert coordinator.scopes[scope.scope_id].code_length == 4
+    await set_number(hass, "number.keypad_code_length", 4)
+    assert coordinator.keypads[keypad.keypad_id].code_length == 4
 
     # And back to unset, which the model spells None.
-    await set_number(hass, "number.front_door_code_length", 0)
-    assert coordinator.scopes[scope.scope_id].code_length is None
+    await set_number(hass, "number.keypad_code_length", 0)
+    assert coordinator.keypads[keypad.keypad_id].code_length is None
 
 
 async def test_a_scope_number_survives_a_restart(hass: HomeAssistant, entry, scope):
@@ -97,7 +107,7 @@ async def test_a_scope_number_survives_a_restart(hass: HomeAssistant, entry, sco
 
 
 async def test_a_code_length_set_from_its_entity_governs_the_keypad(
-    hass: HomeAssistant, entry, scope
+    hass: HomeAssistant, entry, scope, keypad
 ):
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
@@ -106,12 +116,12 @@ async def test_a_code_length_set_from_its_entity_governs_the_keypad(
     )
     await hass.async_block_till_done()
 
-    await set_number(hass, "number.front_door_code_length", 4)
+    await set_number(hass, "number.keypad_code_length", 4)
 
     # Four keystrokes and no terminator: the buffer submits on length alone.
     for key in code[:-1]:
-        assert await coordinator.async_submit_key(scope.scope_id, key) is None
-    result = await coordinator.async_submit_key(scope.scope_id, code[-1])
+        assert await coordinator.async_submit_key(keypad.keypad_id, key) is None
+    result = await coordinator.async_submit_key(keypad.keypad_id, code[-1])
     assert result is not None
     assert result.valid is True
 
@@ -131,19 +141,21 @@ async def test_a_lockout_threshold_set_from_its_entity_is_enforced(
 
 
 # ----------------------------------------------------------------------
-# Scope texts
+# Keypad texts
 # ----------------------------------------------------------------------
 
 
-async def test_a_new_scope_shows_its_terminator_keys(hass: HomeAssistant, entry, scope):
+async def test_a_new_keypad_shows_its_terminator_keys(
+    hass: HomeAssistant, entry, keypad
+):
     await hass.async_block_till_done()
 
     # The model's list, spelled the way a text entity has to spell it.
-    assert state_of(hass, "text.front_door_terminator_keys").state == "#"
+    assert state_of(hass, "text.keypad_terminator_keys").state == "#"
 
 
 async def test_terminator_keys_set_from_the_entity_govern_the_keypad(
-    hass: HomeAssistant, entry, scope
+    hass: HomeAssistant, entry, scope, keypad
 ):
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
@@ -152,39 +164,39 @@ async def test_terminator_keys_set_from_the_entity_govern_the_keypad(
     )
     await hass.async_block_till_done()
 
-    await set_text(hass, "text.front_door_terminator_keys", "*, B")
-    assert coordinator.scopes[scope.scope_id].terminator_keys == ["*", "B"]
+    await set_text(hass, "text.keypad_terminator_keys", "*, B")
+    assert coordinator.keypads[keypad.keypad_id].terminator_keys == ["*", "B"]
     # And it reached the subentry, so it is still there after a restart.
-    assert entry.subentries[scope.scope_id].data["terminator_keys"] == ["*", "B"]
+    assert entry.subentries[keypad.keypad_id].data["terminator_keys"] == ["*", "B"]
 
     for key in code:
-        assert await coordinator.async_submit_key(scope.scope_id, key) is None
+        assert await coordinator.async_submit_key(keypad.keypad_id, key) is None
     # "#" is no longer a terminator, so it goes into the buffer like any other key,
     # while "B" now submits what was typed -- including that stray "#".
-    assert await coordinator.async_submit_key(scope.scope_id, "#") is None
-    result = await coordinator.async_submit_key(scope.scope_id, "B")
+    assert await coordinator.async_submit_key(keypad.keypad_id, "#") is None
+    result = await coordinator.async_submit_key(keypad.keypad_id, "B")
     assert result is not None
     assert result.valid is False
 
     for key in code:
-        await coordinator.async_submit_key(scope.scope_id, key)
-    result = await coordinator.async_submit_key(scope.scope_id, "*")
+        await coordinator.async_submit_key(keypad.keypad_id, key)
+    result = await coordinator.async_submit_key(keypad.keypad_id, "*")
     assert result is not None
     assert result.valid is True
 
 
 async def test_emptying_the_terminator_keys_leaves_no_terminator(
-    hass: HomeAssistant, entry, scope
+    hass: HomeAssistant, entry, keypad
 ):
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
 
-    await set_text(hass, "text.front_door_terminator_keys", "")
+    await set_text(hass, "text.keypad_terminator_keys", "")
 
-    assert coordinator.scopes[scope.scope_id].terminator_keys == []
+    assert coordinator.keypads[keypad.keypad_id].terminator_keys == []
     # Nothing submits the buffer now, which is a valid way to run a keypad that
     # only ever uses a fixed code length.
-    assert await coordinator.async_submit_key(scope.scope_id, "#") is None
+    assert await coordinator.async_submit_key(keypad.keypad_id, "#") is None
 
 
 # ----------------------------------------------------------------------

@@ -45,11 +45,13 @@ from .const import (
     DEFAULT_REJECT_WEAK_CODES,
     DEFAULT_WEAK_CODE_BLOCKLIST,
     DEVICE_MANUFACTURER,
+    DEVICE_MODEL_KEYPAD,
     DEVICE_MODEL_SCOPE,
     DOMAIN,
     EVENT_SUBMISSION,
     REASON_TO_EVENT_TYPE,
     SUBENTRY_TYPE_CREDENTIAL,
+    SUBENTRY_TYPE_KEYPAD,
     SUBENTRY_TYPE_SCOPE,
     CodeType,
     EventType,
@@ -58,15 +60,17 @@ from .const import (
     Source,
     credential_code_unique_id,
     credential_device_identifier,
+    keypad_device_identifier,
 )
 from .crypto import compute_lookup_index, find_weakness, generate_code, verify
 from .exceptions import (
     CodeCollisionError,
     UnknownCredentialError,
+    UnknownKeypadError,
     UnknownScopeError,
     WeakCodeError,
 )
-from .models import AuditEntry, Credential, Grant, Policy, Scope
+from .models import AuditEntry, Credential, Grant, Keypad, Policy, Scope
 from .policy import evaluate, is_within_grace
 from .store import HyperPasscodeStore, StoredData
 
@@ -76,8 +80,10 @@ _LOGGER = logging.getLogger(__name__)
 SIGNAL_SUBMISSION = f"{DOMAIN}_submission_{{}}"
 SIGNAL_SCOPES_CHANGED = f"{DOMAIN}_scopes_changed"
 SIGNAL_CREDENTIALS_CHANGED = f"{DOMAIN}_credentials_changed"
+SIGNAL_KEYPADS_CHANGED = f"{DOMAIN}_keypads_changed"
 SIGNAL_CREDENTIAL_UPDATED = f"{DOMAIN}_credential_updated_{{}}"
 SIGNAL_SCOPE_UPDATED = f"{DOMAIN}_scope_updated_{{}}"
+SIGNAL_KEYPAD_UPDATED = f"{DOMAIN}_keypad_updated_{{}}"
 
 #: The recorder, and the service on it that deletes one entity's recorded history.
 RECORDER_DOMAIN = "recorder"
@@ -153,8 +159,6 @@ class ScopeRuntime:
 
     failed_attempts: int = 0
     locked_until: datetime | None = None
-    buffer: str = ""
-    cancel_buffer_timer: CALLBACK_TYPE | None = None
     last_used: datetime | None = None
     last_label: str | None = None
     last_credential_id: str | None = None
@@ -164,6 +168,14 @@ class ScopeRuntime:
     last_result_dry_run: bool = False
     script: Script | None = None
     script_source: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class KeypadRuntime:
+    """Per-keypad state that lives only in memory: the in-progress keystroke buffer."""
+
+    buffer: str = ""
+    cancel_buffer_timer: CALLBACK_TYPE | None = None
 
 
 class HyperPasscodeCoordinator:
@@ -178,7 +190,9 @@ class HyperPasscodeCoordinator:
         self.store = store
         self._index: dict[str, str] = {}
         self._runtime: dict[str, ScopeRuntime] = {}
+        self._keypad_runtime: dict[str, KeypadRuntime] = {}
         self._scopes: dict[str, Scope] = {}
+        self._keypads: dict[str, Keypad] = {}
         self._credentials: dict[str, Credential] = {}
         self._known_options: dict[str, Any] = {}
 
@@ -191,6 +205,7 @@ class HyperPasscodeCoordinator:
         await self.store.async_load()
         self._known_options = dict(self.entry.options)
         self._rebuild_scopes()
+        self._rebuild_keypads()
         self._rebuild_credentials()
         self._rebuild_index()
         self._rebuild_runtime()
@@ -241,6 +256,7 @@ class HyperPasscodeCoordinator:
         """
         self._sync_credentials()
         self._sync_scopes()
+        self._sync_keypads()
 
     def _sync_credentials(self) -> None:
         """Absorb credential subentry changes, keeping live counters intact."""
@@ -278,6 +294,28 @@ class HyperPasscodeCoordinator:
         if before != after:
             async_dispatcher_send(self.hass, SIGNAL_SCOPES_CHANGED)
 
+    def _sync_keypads(self) -> None:
+        """Absorb keypad subentry changes, keeping in-progress buffers intact."""
+        before = set(self._keypads)
+        self._rebuild_keypads()
+        after = set(self._keypads)
+
+        for keypad_id in after - before:
+            self._keypad_runtime.setdefault(keypad_id, KeypadRuntime())
+        for keypad_id in before - after:
+            self._keypad_runtime.pop(keypad_id, None)
+
+        if after - before:
+            # Before the signal below adds the new keypad's entities, so it already
+            # has a device to hang off.
+            self.async_register_keypad_devices()
+
+        for keypad_id in after & before:
+            async_dispatcher_send(self.hass, SIGNAL_KEYPAD_UPDATED.format(keypad_id))
+
+        if before != after:
+            async_dispatcher_send(self.hass, SIGNAL_KEYPADS_CHANGED)
+
     def _rebuild_scopes(self) -> None:
         """Read the scopes back out of the config entry's subentries.
 
@@ -292,6 +330,16 @@ class HyperPasscodeCoordinator:
             )
             for subentry_id, subentry in self.entry.subentries.items()
             if subentry.subentry_type == SUBENTRY_TYPE_SCOPE
+        }
+
+    def _rebuild_keypads(self) -> None:
+        """Read the keypad buffers back out of the config entry's subentries."""
+        self._keypads = {
+            subentry_id: Keypad.from_dict(
+                {**subentry.data, "keypad_id": subentry_id, "name": subentry.title}
+            )
+            for subentry_id, subentry in self.entry.subentries.items()
+            if subentry.subentry_type == SUBENTRY_TYPE_KEYPAD
         }
 
     def _rebuild_index(self) -> None:
@@ -323,10 +371,10 @@ class HyperPasscodeCoordinator:
     @callback
     def async_shutdown(self) -> None:
         """Cancel any pending keystroke timers."""
-        for runtime in self._runtime.values():
-            if runtime.cancel_buffer_timer is not None:
-                runtime.cancel_buffer_timer()
-                runtime.cancel_buffer_timer = None
+        for keypad_runtime in self._keypad_runtime.values():
+            if keypad_runtime.cancel_buffer_timer is not None:
+                keypad_runtime.cancel_buffer_timer()
+                keypad_runtime.cancel_buffer_timer = None
 
     # ------------------------------------------------------------------
     # Accessors
@@ -347,6 +395,11 @@ class HyperPasscodeCoordinator:
         """Configured credentials by id, assembled from subentry and store."""
         return self._credentials
 
+    @property
+    def keypads(self) -> dict[str, Keypad]:
+        """Configured keypad buffers by id, which is also their subentry id."""
+        return self._keypads
+
     def get_scope(self, scope_id: str) -> Scope:
         """Return a scope or raise."""
         try:
@@ -363,9 +416,20 @@ class HyperPasscodeCoordinator:
                 f"No such credential: {credential_id}"
             ) from None
 
+    def get_keypad(self, keypad_id: str) -> Keypad:
+        """Return a keypad buffer or raise."""
+        try:
+            return self._keypads[keypad_id]
+        except KeyError:
+            raise UnknownKeypadError(f"No such keypad: {keypad_id}") from None
+
     def runtime(self, scope_id: str) -> ScopeRuntime:
         """Return (creating if needed) the runtime state for a scope."""
         return self._runtime.setdefault(scope_id, ScopeRuntime())
+
+    def keypad_runtime(self, keypad_id: str) -> KeypadRuntime:
+        """Return (creating if needed) the runtime state for a keypad buffer."""
+        return self._keypad_runtime.setdefault(keypad_id, KeypadRuntime())
 
     def setting(self, key: str, default: Any) -> Any:
         """Read an integration-level setting from the config entry's options."""
@@ -675,6 +739,51 @@ class HyperPasscodeCoordinator:
             )
 
     @callback
+    def _async_keypad_device(self, keypad_id: str) -> dr.DeviceEntry | None:
+        """Look up a keypad buffer's device."""
+        return dr.async_get(self.hass).async_get_device_by_identifier(
+            keypad_device_identifier(keypad_id), self.entry.entry_id
+        )
+
+    @callback
+    def async_register_keypad_devices(self) -> None:
+        """Register every keypad buffer's device.
+
+        Nested under its target scope's device via ``via_device_id``, which must
+        already be registered -- called after ``async_register_scope_devices``.
+        """
+        registry = dr.async_get(self.hass)
+        for keypad_id, keypad in self._keypads.items():
+            registry.async_get_or_create(
+                config_entry_id=self.entry.entry_id,
+                config_subentry_id=keypad_id,
+                identifiers={keypad_device_identifier(keypad_id)},
+                name=keypad.name,
+                manufacturer=DEVICE_MANUFACTURER,
+                model=DEVICE_MODEL_KEYPAD,
+                via_device_id=self.async_device_id(keypad.scope_id),
+            )
+
+    @callback
+    def async_sync_keypad_devices(self) -> None:
+        """Re-parent keypad devices whose target scope has changed.
+
+        ``device_info`` is read once, when an entity is added, so a keypad
+        reconfigured to target a different scope would otherwise keep the place in
+        the tree it had when it was created.
+        """
+        registry = dr.async_get(self.hass)
+        for keypad_id, keypad in self._keypads.items():
+            device = registry.async_get_device_by_identifier(
+                keypad_device_identifier(keypad_id), self.entry.entry_id
+            )
+            if device is None:
+                continue
+            via_device_id = self.async_device_id(keypad.scope_id)
+            if device.via_device_id != via_device_id:
+                registry.async_update_device(device.id, via_device_id=via_device_id)
+
+    @callback
     def async_credential_via_device_id(self, credential: Credential) -> str | None:
         """Return the scope device a credential's device should sit under.
 
@@ -716,47 +825,47 @@ class HyperPasscodeCoordinator:
     # ------------------------------------------------------------------
 
     async def async_submit_key(
-        self, scope_id: str, key: str, source: str = Source.KEYPAD
+        self, keypad_id: str, key: str, source: str = Source.KEYPAD
     ) -> SubmissionResult | None:
-        """Feed one keystroke into a scope's buffer.
+        """Feed one keystroke into a keypad buffer.
 
-        Physical keypads emit one event per key, so the buffer submits when it sees a
-        terminator key, when it reaches the scope's fixed code length, and clears
-        itself after the inter-key timeout.
+        Physical keypads emit one event per key, so the buffer submits -- against the
+        keypad's target scope -- when it sees a terminator key, when it reaches the
+        keypad's fixed code length, and clears itself after the inter-key timeout.
         """
-        scope = self.get_scope(scope_id)
-        runtime = self.runtime(scope_id)
+        keypad = self.get_keypad(keypad_id)
+        runtime = self.keypad_runtime(keypad_id)
 
         self._cancel_buffer_timer(runtime)
 
-        if key in scope.terminator_keys:
+        if key in keypad.terminator_keys:
             code, runtime.buffer = runtime.buffer, ""
             if not code:
                 return None
-            return await self.async_submit(scope_id, code, source)
+            return await self.async_submit(keypad.scope_id, code, source)
 
         runtime.buffer += key
 
-        if scope.code_length is not None and len(runtime.buffer) >= scope.code_length:
+        if keypad.code_length is not None and len(runtime.buffer) >= keypad.code_length:
             code, runtime.buffer = runtime.buffer, ""
-            return await self.async_submit(scope_id, code, source)
+            return await self.async_submit(keypad.scope_id, code, source)
 
         runtime.cancel_buffer_timer = async_call_later(
             self.hass,
-            scope.inter_key_timeout,
-            lambda _now: self.async_clear_buffer(scope_id),
+            keypad.inter_key_timeout,
+            lambda _now: self.async_clear_buffer(keypad_id),
         )
         return None
 
     @callback
-    def async_clear_buffer(self, scope_id: str) -> None:
-        """Discard a scope's partially entered code."""
-        runtime = self.runtime(scope_id)
+    def async_clear_buffer(self, keypad_id: str) -> None:
+        """Discard a keypad's partially entered code."""
+        runtime = self.keypad_runtime(keypad_id)
         self._cancel_buffer_timer(runtime)
         runtime.buffer = ""
 
     @callback
-    def _cancel_buffer_timer(self, runtime: ScopeRuntime) -> None:
+    def _cancel_buffer_timer(self, runtime: KeypadRuntime) -> None:
         """Cancel a pending inter-key timeout."""
         if runtime.cancel_buffer_timer is not None:
             runtime.cancel_buffer_timer()
@@ -1233,6 +1342,71 @@ class HyperPasscodeCoordinator:
             credential.grants = [g for g in credential.grants if g.scope_id != scope_id]
             self.async_save_credential(credential)
         async_dispatcher_send(self.hass, SIGNAL_CREDENTIALS_CHANGED)
+
+    # ------------------------------------------------------------------
+    # Keypad buffer CRUD
+    # ------------------------------------------------------------------
+
+    async def async_create_keypad(self, **kwargs: Any) -> Keypad:
+        """Add a keypad buffer as a config subentry."""
+        self.get_scope(kwargs["scope_id"])
+        keypad = Keypad(keypad_id=uuid4().hex, **kwargs)
+        data = keypad.to_dict()
+        name = data.pop("name")
+        data.pop("keypad_id")
+
+        self.hass.config_entries.async_add_subentry(
+            self.entry,
+            ConfigSubentry(
+                data=MappingProxyType(data),
+                subentry_id=keypad.keypad_id,
+                subentry_type=SUBENTRY_TYPE_KEYPAD,
+                title=name,
+                unique_id=None,
+            ),
+        )
+        # Reflect it at once, so a caller can use the keypad immediately.
+        self._keypads[keypad.keypad_id] = keypad
+        self._keypad_runtime.setdefault(keypad.keypad_id, KeypadRuntime())
+        self.async_register_keypad_devices()
+        async_dispatcher_send(self.hass, SIGNAL_KEYPADS_CHANGED)
+        return keypad
+
+    async def async_update_keypad(
+        self, keypad_id: str, changes: dict[str, Any]
+    ) -> Keypad:
+        """Apply field changes to a keypad buffer's subentry."""
+        keypad = self.get_keypad(keypad_id)
+        if (scope_id := changes.get("scope_id")) is not None:
+            self.get_scope(scope_id)
+        for key, value in changes.items():
+            if hasattr(keypad, key):
+                setattr(keypad, key, value)
+
+        data = keypad.to_dict()
+        name = data.pop("name")
+        data.pop("keypad_id")
+
+        self.hass.config_entries.async_update_subentry(
+            self.entry,
+            self.entry.subentries[keypad_id],
+            data=data,
+            title=name,
+        )
+        async_dispatcher_send(self.hass, SIGNAL_KEYPAD_UPDATED.format(keypad_id))
+        self.async_sync_keypad_devices()
+        return keypad
+
+    async def async_delete_keypad(self, keypad_id: str) -> None:
+        """Remove a keypad buffer.
+
+        Home Assistant removes the subentry's device and entities for us.
+        """
+        self.get_keypad(keypad_id)
+        self.hass.config_entries.async_remove_subentry(self.entry, keypad_id)
+        self._keypads.pop(keypad_id, None)
+        self._keypad_runtime.pop(keypad_id, None)
+        async_dispatcher_send(self.hass, SIGNAL_KEYPADS_CHANGED)
 
     @callback
     def async_update_settings(self, changes: dict[str, Any]) -> dict[str, Any]:

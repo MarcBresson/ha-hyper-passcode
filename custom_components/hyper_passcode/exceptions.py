@@ -19,6 +19,10 @@ class UnknownCredentialError(HyperPasscodeError):
     """The referenced credential does not exist."""
 
 
+class UnknownKeypadError(HyperPasscodeError):
+    """The referenced keypad buffer does not exist."""
+
+
 class CodeCollisionError(HyperPasscodeError):
     """A credential with this code already exists.
 

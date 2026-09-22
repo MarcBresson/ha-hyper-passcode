@@ -2,8 +2,9 @@
 
 A number entity is a better home for a threshold than a form field. It can be read in
 a template, changed from a dashboard or an automation, and the recorder keeps its
-history. Each one writes straight back to the scope's subentry or the credential's
-policy, so a value set here survives a restart exactly as a dialog field did.
+history. Each one writes straight back to the scope's or keypad's subentry, or the
+credential's policy, so a value set here survives a restart exactly as a dialog field
+did.
 
 A number entity cannot hold ``None``, so every field that used to mean "leave it
 blank" encodes that as zero: no fixed code length, unlimited uses, no cooldown. The
@@ -31,11 +32,13 @@ from . import HyperPasscodeConfigEntry
 from .coordinator import HyperPasscodeCoordinator
 from .entity import (
     HyperPasscodeCredentialEntity,
+    HyperPasscodeKeypadEntity,
     HyperPasscodeScopeEntity,
     async_add_credential_entities,
+    async_add_keypad_entities,
     async_add_scope_entities,
 )
-from .models import Credential, Policy, Scope
+from .models import Credential, Keypad, Policy, Scope
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -45,6 +48,16 @@ class ScopeNumberDescription(NumberEntityDescription):
     #: Reads the value to show off the scope.
     value_fn: Callable[[Scope], float]
     #: Turns what the user typed into what the scope stores.
+    to_stored: Callable[[float], Any]
+
+
+@dataclass(frozen=True, kw_only=True)
+class KeypadNumberDescription(NumberEntityDescription):
+    """One editable field on a keypad buffer."""
+
+    #: Reads the value to show off the keypad.
+    value_fn: Callable[[Keypad], float]
+    #: Turns what the user typed into what the keypad stores.
     to_stored: Callable[[float], Any]
 
 
@@ -65,32 +78,6 @@ def _optional_int(value: float) -> int | None:
 
 
 SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
-    ScopeNumberDescription(
-        key="code_length",
-        translation_key="code_length",
-        icon="mdi:numeric",
-        entity_category=EntityCategory.CONFIG,
-        mode=NumberMode.BOX,
-        native_min_value=0,
-        native_max_value=64,
-        native_step=1,
-        value_fn=lambda scope: scope.code_length or 0,
-        to_stored=_optional_int,
-    ),
-    ScopeNumberDescription(
-        key="inter_key_timeout",
-        translation_key="inter_key_timeout",
-        icon="mdi:timer-sand",
-        entity_category=EntityCategory.CONFIG,
-        mode=NumberMode.BOX,
-        device_class=NumberDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.SECONDS,
-        native_min_value=1,
-        native_max_value=300,
-        native_step=0.5,
-        value_fn=lambda scope: scope.inter_key_timeout,
-        to_stored=float,
-    ),
     ScopeNumberDescription(
         key="lockout_threshold",
         translation_key="lockout_threshold",
@@ -116,6 +103,35 @@ SCOPE_NUMBERS: tuple[ScopeNumberDescription, ...] = (
         native_step=1,
         value_fn=lambda scope: scope.lockout_duration,
         to_stored=int,
+    ),
+)
+
+KEYPAD_NUMBERS: tuple[KeypadNumberDescription, ...] = (
+    KeypadNumberDescription(
+        key="code_length",
+        translation_key="code_length",
+        icon="mdi:numeric",
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        native_min_value=0,
+        native_max_value=64,
+        native_step=1,
+        value_fn=lambda keypad: keypad.code_length or 0,
+        to_stored=_optional_int,
+    ),
+    KeypadNumberDescription(
+        key="inter_key_timeout",
+        translation_key="inter_key_timeout",
+        icon="mdi:timer-sand",
+        entity_category=EntityCategory.CONFIG,
+        mode=NumberMode.BOX,
+        device_class=NumberDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        native_min_value=1,
+        native_max_value=300,
+        native_step=0.5,
+        value_fn=lambda keypad: keypad.inter_key_timeout,
+        to_stored=float,
     ),
 )
 
@@ -187,7 +203,7 @@ async def async_setup_entry(
     entry: HyperPasscodeConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the editable numbers on every scope and every credential."""
+    """Set up the editable numbers on every scope, keypad and credential."""
     coordinator = entry.runtime_data
     async_add_scope_entities(
         hass,
@@ -195,6 +211,13 @@ async def async_setup_entry(
         coordinator,
         async_add_entities,
         [partial(ScopeNumber, description=d) for d in SCOPE_NUMBERS],
+    )
+    async_add_keypad_entities(
+        hass,
+        entry,
+        coordinator,
+        async_add_entities,
+        [partial(KeypadNumber, description=d) for d in KEYPAD_NUMBERS],
     )
     async_add_credential_entities(
         hass,
@@ -233,6 +256,38 @@ class ScopeNumber(NumberEntity, HyperPasscodeScopeEntity):
         """Write the new value back to the scope's subentry."""
         await self.coordinator.async_update_scope(
             self.scope_id,
+            {self.entity_description.key: self.entity_description.to_stored(value)},
+        )
+
+
+class KeypadNumber(NumberEntity, HyperPasscodeKeypadEntity):
+    """One editable setting on a keypad buffer."""
+
+    entity_description: KeypadNumberDescription
+
+    def __init__(
+        self,
+        coordinator: HyperPasscodeCoordinator,
+        keypad: Keypad,
+        description: KeypadNumberDescription,
+    ) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, keypad)
+        self.entity_description = description
+        self._attr_unique_id = f"{keypad.keypad_id}_{description.key}"
+
+    @property
+    def native_value(self) -> float | None:
+        """The value currently in effect, or None once the keypad is gone."""
+        keypad = self.keypad
+        if keypad is None:
+            return None
+        return self.entity_description.value_fn(keypad)
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Write the new value back to the keypad's subentry."""
+        await self.coordinator.async_update_keypad(
+            self.keypad_id,
             {self.entity_description.key: self.entity_description.to_stored(value)},
         )
 

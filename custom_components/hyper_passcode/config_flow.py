@@ -56,12 +56,13 @@ from .const import (
     DEFAULT_WEAK_CODE_BLOCKLIST,
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
+    SUBENTRY_TYPE_KEYPAD,
     SUBENTRY_TYPE_SCOPE,
     Source,
 )
 from .coordinator import SubmissionResult
 from .exceptions import CodeCollisionError, WeakCodeError
-from .models import Policy, Scope
+from .models import Keypad, Policy, Scope
 
 ATTR_DEFAULT_ACTIONS = "default_actions"
 ATTR_CODE = "code"
@@ -147,12 +148,14 @@ class HyperPasscodeConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Declare scopes as a subentry type.
 
-        This is what puts "Add scope" and "Add code" buttons on the integration page,
-        and gives each of them its own configure dialog and delete option.
+        This is what puts "Add scope", "Add code" and "Add keypad buffer" buttons on
+        the integration page, and gives each of them its own configure dialog and
+        delete option.
         """
         return {
             SUBENTRY_TYPE_SCOPE: ScopeSubentryFlow,
             SUBENTRY_TYPE_CREDENTIAL: CredentialSubentryFlow,
+            SUBENTRY_TYPE_KEYPAD: KeypadSubentryFlow,
         }
 
 
@@ -300,10 +303,11 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
 def _scope_schema(current: Mapping[str, Any] | None = None) -> vol.Schema:
     """Build the add/edit form for one scope.
 
-    Only what no entity can express. The code length, the inter-key timeout and the
-    two lockout settings are number entities on the scope's own device, and the
-    terminator keys are a text entity there, so a door's threshold can be changed
-    from a dashboard rather than from here.
+    Only what no entity can express. The two lockout settings are number entities on
+    the scope's own device, so a door's threshold can be changed from a dashboard
+    rather than from here. Code length, terminator keys and the inter-key timeout
+    live on a keypad buffer device instead, added separately and pointed at this
+    scope.
     """
     current = current or {}
 
@@ -341,6 +345,15 @@ def _scope_entry(
     return name, payload
 
 
+def _scope_options(entry: ConfigEntry) -> list[SelectOptionDict]:
+    """List the entry's scopes, for a picker on another subentry's form."""
+    return [
+        SelectOptionDict(value=subentry_id, label=subentry.title)
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_TYPE_SCOPE
+    ]
+
+
 class ScopeSubentryFlow(ConfigSubentryFlow):
     """Add and edit scopes from the integration page."""
 
@@ -367,6 +380,85 @@ class ScopeSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_scope_schema({**subentry.data, CONF_NAME: subentry.title}),
+        )
+
+
+def _keypad_schema(
+    scope_options: list[SelectOptionDict], current: Mapping[str, Any] | None = None
+) -> vol.Schema:
+    """Build the add/edit form for one keypad buffer.
+
+    Only identity and its target scope. Code length, terminator keys and the
+    inter-key timeout are number and text entities on the keypad's own device, added
+    once it exists.
+    """
+    current = current or {}
+
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_NAME, default=current.get(CONF_NAME, vol.UNDEFINED)
+            ): TextSelector(),
+            vol.Required(
+                ATTR_SCOPE_ID, default=current.get(ATTR_SCOPE_ID, vol.UNDEFINED)
+            ): SelectSelector(SelectSelectorConfig(options=scope_options)),
+        }
+    )
+
+
+def _keypad_entry(
+    user_input: dict[str, Any], current: Mapping[str, Any] | None = None
+) -> tuple[str, dict[str, Any]]:
+    """Turn form input into a subentry title and payload.
+
+    Routed through ``Keypad`` so a keypad created here and one created through the
+    ``create_keypad`` action are stored in exactly the same shape.
+    """
+    data = {**(current or {}), **user_input}
+    name = data.pop(CONF_NAME)
+
+    keypad = Keypad.from_dict({**data, "keypad_id": "", "name": name})
+    payload = keypad.to_dict()
+    payload.pop("keypad_id")
+    payload.pop("name")
+    return name, payload
+
+
+class KeypadSubentryFlow(ConfigSubentryFlow):
+    """Add and edit keypad buffers from the integration page."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add a keypad buffer."""
+        scope_options = _scope_options(self._get_entry())
+        if not scope_options:
+            return self.async_abort(reason="no_scopes")
+
+        if user_input is not None:
+            title, data = _keypad_entry(user_input)
+            return self.async_create_entry(title=title, data=data)
+        return self.async_show_form(
+            step_id="user", data_schema=_keypad_schema(scope_options)
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit an existing keypad buffer."""
+        subentry = self._get_reconfigure_subentry()
+        scope_options = _scope_options(self._get_entry())
+        if user_input is not None:
+            title, data = _keypad_entry(user_input, subentry.data)
+            return self.async_update_and_abort(
+                self._get_entry(), subentry, title=title, data=data
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_keypad_schema(
+                scope_options, {**subentry.data, CONF_NAME: subentry.title}
+            ),
         )
 
 
@@ -446,14 +538,6 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
     _credential: Any = None
     _code: str = ""
 
-    def _scope_options(self) -> list[SelectOptionDict]:
-        """List the scopes a code can be granted on."""
-        return [
-            SelectOptionDict(value=subentry_id, label=subentry.title)
-            for subentry_id, subentry in self._get_entry().subentries.items()
-            if subentry.subentry_type == SUBENTRY_TYPE_SCOPE
-        ]
-
     def _coordinator(self) -> Any:
         """Return the loaded coordinator behind this entry."""
         return self._get_entry().runtime_data
@@ -500,7 +584,9 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_credential_schema(self._scope_options(), user_input),
+            data_schema=_credential_schema(
+                _scope_options(self._get_entry()), user_input
+            ),
             errors=errors,
         )
 
@@ -592,7 +678,7 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_credential_schema(
-                self._scope_options(), current, editing=True
+                _scope_options(self._get_entry()), current, editing=True
             ),
             errors=errors,
         )

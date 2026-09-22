@@ -19,7 +19,7 @@ submit:
 
 submit_key:
   fields:
-    scope_id:
+    keypad_id:
       required: true
       selector:
         text:
@@ -37,7 +37,7 @@ submit_key:
 
 clear_buffer:
   fields:
-    scope_id:
+    keypad_id:
       required: true
       selector:
         text:
@@ -362,24 +362,6 @@ create_scope:
     default_actions:
       selector:
         action:
-    code_length:
-      selector:
-        number:
-          min: 1
-          max: 64
-          mode: box
-    terminator_keys:
-      selector:
-        text:
-          multiple: true
-    inter_key_timeout:
-      selector:
-        number:
-          min: 1
-          max: 300
-          step: 0.5
-          unit_of_measurement: s
-          mode: box
     lockout_threshold:
       selector:
         number:
@@ -406,6 +388,38 @@ update_scope:
     default_actions:
       selector:
         action:
+    lockout_threshold:
+      selector:
+        number:
+          min: 0
+          max: 100
+          mode: box
+    lockout_duration:
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+
+delete_scope:
+  fields:
+    scope_id:
+      required: true
+      selector:
+        text:
+
+create_keypad:
+  fields:
+    name:
+      required: true
+      example: Front door keypad
+      selector:
+        text:
+    scope_id:
+      required: true
+      selector:
+        text:
     code_length:
       selector:
         number:
@@ -424,23 +438,41 @@ update_scope:
           step: 0.5
           unit_of_measurement: s
           mode: box
-    lockout_threshold:
+
+update_keypad:
+  fields:
+    keypad_id:
+      required: true
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    scope_id:
+      selector:
+        text:
+    code_length:
       selector:
         number:
-          min: 0
-          max: 100
+          min: 1
+          max: 64
           mode: box
-    lockout_duration:
+    terminator_keys:
+      selector:
+        text:
+          multiple: true
+    inter_key_timeout:
       selector:
         number:
-          min: 0
-          max: 86400
+          min: 1
+          max: 300
+          step: 0.5
           unit_of_measurement: s
           mode: box
 
-delete_scope:
+delete_keypad:
   fields:
-    scope_id:
+    keypad_id:
       required: true
       selector:
         text:

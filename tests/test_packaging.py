@@ -133,9 +133,11 @@ def test_every_editable_setting_entity_is_named(translations):
     # shows up on a device page as a bare key where a label used to be.
     from custom_components.hyper_passcode import number
 
-    declared = {description.key for description in number.SCOPE_NUMBERS} | {
-        description.key for description in number.POLICY_NUMBERS
-    }
+    declared = (
+        {description.key for description in number.SCOPE_NUMBERS}
+        | {description.key for description in number.KEYPAD_NUMBERS}
+        | {description.key for description in number.POLICY_NUMBERS}
+    )
     assert declared == set(translations["entity"]["number"])
 
 

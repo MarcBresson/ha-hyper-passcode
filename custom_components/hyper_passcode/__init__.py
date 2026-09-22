@@ -36,12 +36,15 @@ async def async_setup_entry(
     await coordinator.async_load()
     entry.runtime_data = coordinator
 
-    # Before the platforms, because a code's device links to its scope's and Home
-    # Assistant refuses a link to a device that does not exist yet.
+    # Before the platforms, because a code's device links to its scope's and a
+    # keypad's links to its scope's too, and Home Assistant refuses a link to a
+    # device that does not exist yet. Keypads after scopes, since they link to one.
     coordinator.async_register_scope_devices()
+    coordinator.async_register_keypad_devices()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_sync_credential_devices()
+    coordinator.async_sync_keypad_devices()
 
     async_register_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_entry_updated))
@@ -67,10 +70,11 @@ async def _async_entry_updated(
 ) -> None:
     """React to a change on the config entry.
 
-    Options and scopes both arrive here, and they want different handling. An options
-    change can alter which entities should exist at all -- ``per_credential_entities``
-    is the clear case -- so it reloads. A scope change is absorbed in place, because
-    reloading would reset lockout counters and keypad buffers on every edit.
+    Options, scopes, credentials and keypads all arrive here, and they want different
+    handling. An options change can alter which entities should exist at all --
+    ``per_credential_entities`` is the clear case -- so it reloads. A subentry change
+    is absorbed in place, because reloading would reset lockout counters and keypad
+    buffers on every edit.
     """
     coordinator = entry.runtime_data
     if coordinator.async_options_changed():
@@ -78,3 +82,4 @@ async def _async_entry_updated(
         return
     coordinator.async_sync_subentries()
     coordinator.async_sync_credential_devices()
+    coordinator.async_sync_keypad_devices()

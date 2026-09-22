@@ -24,6 +24,7 @@ from .const import (
     ATTR_CODE,
     ATTR_CREDENTIAL_ID,
     ATTR_KEY,
+    ATTR_KEYPAD_ID,
     ATTR_LABEL,
     ATTR_SCOPE_ID,
     ATTR_SOURCE,
@@ -52,6 +53,9 @@ SERVICE_REVOKE_ALL = "revoke_all"
 SERVICE_CREATE_SCOPE = "create_scope"
 SERVICE_UPDATE_SCOPE = "update_scope"
 SERVICE_DELETE_SCOPE = "delete_scope"
+SERVICE_CREATE_KEYPAD = "create_keypad"
+SERVICE_UPDATE_KEYPAD = "update_keypad"
+SERVICE_DELETE_KEYPAD = "delete_keypad"
 
 #: Policy fields are flattened into the service schemas rather than nested, because a
 #: nested mapping is painful to fill in from the Developer Tools UI.
@@ -94,13 +98,15 @@ SUBMIT_SCHEMA = vol.Schema(
 
 SUBMIT_KEY_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_SCOPE_ID): cv.string,
+        vol.Required(ATTR_KEYPAD_ID): cv.string,
         vol.Required(ATTR_KEY): cv.string,
         vol.Optional(ATTR_SOURCE, default=str(Source.KEYPAD)): cv.string,
     }
 )
 
 SCOPE_ONLY_SCHEMA = vol.Schema({vol.Required(ATTR_SCOPE_ID): cv.string})
+
+KEYPAD_ONLY_SCHEMA = vol.Schema({vol.Required(ATTR_KEYPAD_ID): cv.string})
 
 CREATE_CODE_SCHEMA = vol.Schema(
     {
@@ -180,9 +186,6 @@ CREATE_SCOPE_SCHEMA = vol.Schema(
     {
         vol.Required("name"): cv.string,
         vol.Optional("default_actions"): cv.SCRIPT_SCHEMA,
-        vol.Optional("code_length"): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
-        vol.Optional("terminator_keys"): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional("inter_key_timeout"): vol.Coerce(float),
         vol.Optional("lockout_threshold"): vol.All(vol.Coerce(int), vol.Range(min=0)),
         vol.Optional("lockout_duration"): vol.All(vol.Coerce(int), vol.Range(min=0)),
     }
@@ -192,6 +195,24 @@ UPDATE_SCOPE_SCHEMA = CREATE_SCOPE_SCHEMA.extend(
     {
         vol.Required(ATTR_SCOPE_ID): cv.string,
         vol.Optional("name"): cv.string,
+    }
+)
+
+CREATE_KEYPAD_SCHEMA = vol.Schema(
+    {
+        vol.Required("name"): cv.string,
+        vol.Required(ATTR_SCOPE_ID): cv.string,
+        vol.Optional("code_length"): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
+        vol.Optional("terminator_keys"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("inter_key_timeout"): vol.Coerce(float),
+    }
+)
+
+UPDATE_KEYPAD_SCHEMA = CREATE_KEYPAD_SCHEMA.extend(
+    {
+        vol.Required(ATTR_KEYPAD_ID): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional(ATTR_SCOPE_ID): cv.string,
     }
 )
 
@@ -243,15 +264,15 @@ def async_register_services(hass: HomeAssistant) -> None:
         return result.as_response()
 
     async def submit_key(call: ServiceCall) -> ServiceResponse:
-        """Feed one keystroke into a scope's buffer."""
+        """Feed one keystroke into a keypad buffer."""
         result = await _coordinator(hass).async_submit_key(
-            call.data[ATTR_SCOPE_ID], call.data[ATTR_KEY], call.data[ATTR_SOURCE]
+            call.data[ATTR_KEYPAD_ID], call.data[ATTR_KEY], call.data[ATTR_SOURCE]
         )
         return result.as_response() if result else {"valid": None, "pending": True}
 
     async def clear_buffer(call: ServiceCall) -> None:
         """Discard a partially entered code."""
-        _coordinator(hass).async_clear_buffer(call.data[ATTR_SCOPE_ID])
+        _coordinator(hass).async_clear_buffer(call.data[ATTR_KEYPAD_ID])
 
     async def test_code(call: ServiceCall) -> ServiceResponse:
         """Validate without recording a use or running any action."""
@@ -380,11 +401,26 @@ def async_register_services(hass: HomeAssistant) -> None:
         """Remove a scope and its entities."""
         await _coordinator(hass).async_delete_scope(call.data[ATTR_SCOPE_ID])
 
+    async def create_keypad(call: ServiceCall) -> ServiceResponse:
+        """Add a keypad buffer."""
+        keypad = await _coordinator(hass).async_create_keypad(**dict(call.data))
+        return {ATTR_KEYPAD_ID: keypad.keypad_id, "name": keypad.name}
+
+    async def update_keypad(call: ServiceCall) -> None:
+        """Change a keypad buffer's configuration."""
+        changes = dict(call.data)
+        keypad_id = changes.pop(ATTR_KEYPAD_ID)
+        await _coordinator(hass).async_update_keypad(keypad_id, changes)
+
+    async def delete_keypad(call: ServiceCall) -> None:
+        """Remove a keypad buffer."""
+        await _coordinator(hass).async_delete_keypad(call.data[ATTR_KEYPAD_ID])
+
     optional = SupportsResponse.OPTIONAL
     registrations: list[tuple[str, Any, vol.Schema, SupportsResponse | None]] = [
         (SERVICE_SUBMIT, submit, SUBMIT_SCHEMA, optional),
         (SERVICE_SUBMIT_KEY, submit_key, SUBMIT_KEY_SCHEMA, optional),
-        (SERVICE_CLEAR_BUFFER, clear_buffer, SCOPE_ONLY_SCHEMA, None),
+        (SERVICE_CLEAR_BUFFER, clear_buffer, KEYPAD_ONLY_SCHEMA, None),
         (SERVICE_TEST_CODE, test_code, TEST_CODE_SCHEMA, optional),
         (SERVICE_CREATE_CODE, create_code, CREATE_CODE_SCHEMA, optional),
         (SERVICE_CREATE_OTP, create_otp, CREATE_OTP_SCHEMA, optional),
@@ -397,6 +433,9 @@ def async_register_services(hass: HomeAssistant) -> None:
         (SERVICE_CREATE_SCOPE, create_scope, CREATE_SCOPE_SCHEMA, optional),
         (SERVICE_UPDATE_SCOPE, update_scope, UPDATE_SCOPE_SCHEMA, None),
         (SERVICE_DELETE_SCOPE, delete_scope, SCOPE_ONLY_SCHEMA, None),
+        (SERVICE_CREATE_KEYPAD, create_keypad, CREATE_KEYPAD_SCHEMA, optional),
+        (SERVICE_UPDATE_KEYPAD, update_keypad, UPDATE_KEYPAD_SCHEMA, None),
+        (SERVICE_DELETE_KEYPAD, delete_keypad, KEYPAD_ONLY_SCHEMA, None),
     ]
 
     for name, handler, schema, supports_response in registrations:

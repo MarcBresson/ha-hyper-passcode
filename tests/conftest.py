@@ -36,3 +36,9 @@ def coordinator(entry: MockConfigEntry) -> HyperPasscodeCoordinator:
 async def scope(coordinator: HyperPasscodeCoordinator):
     """A scope with no default actions."""
     return await coordinator.async_create_scope(name="Front Door")
+
+
+@pytest.fixture
+async def keypad(coordinator: HyperPasscodeCoordinator, scope):
+    """A keypad buffer targeting ``scope``, with the default buffering settings."""
+    return await coordinator.async_create_keypad(name="Keypad", scope_id=scope.scope_id)

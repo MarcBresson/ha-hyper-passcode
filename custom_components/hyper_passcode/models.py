@@ -371,12 +371,6 @@ class Scope:
     #: Home Assistant action sequence run on a valid code, so the common case needs
     #: no automation at all.
     default_actions: list[dict[str, Any]] = field(default_factory=list)
-    #: Fixed code length for keystroke auto-submit. None means wait for a terminator.
-    code_length: int | None = None
-    terminator_keys: list[str] = field(
-        default_factory=lambda: list(DEFAULT_TERMINATOR_KEYS)
-    )
-    inter_key_timeout: float = DEFAULT_INTER_KEY_TIMEOUT
     #: Failures before this scope stops accepting codes. Zero never locks out.
     lockout_threshold: int = DEFAULT_LOCKOUT_THRESHOLD
     lockout_duration: int = DEFAULT_LOCKOUT_DURATION
@@ -387,9 +381,6 @@ class Scope:
             "scope_id": self.scope_id,
             "name": self.name,
             "default_actions": self.default_actions,
-            "code_length": self.code_length,
-            "terminator_keys": list(self.terminator_keys),
-            "inter_key_timeout": self.inter_key_timeout,
             "lockout_threshold": self.lockout_threshold,
             "lockout_duration": self.lockout_duration,
         }
@@ -397,16 +388,10 @@ class Scope:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Scope:
         """Rebuild from the store."""
-        terminator_keys = data.get("terminator_keys")
         return cls(
             scope_id=data["scope_id"],
             name=data.get("name", ""),
             default_actions=list(data.get("default_actions") or []),
-            code_length=data.get("code_length"),
-            terminator_keys=list(
-                DEFAULT_TERMINATOR_KEYS if terminator_keys is None else terminator_keys
-            ),
-            inter_key_timeout=data.get("inter_key_timeout", DEFAULT_INTER_KEY_TIMEOUT),
             # A scope stored before lockout moved here holds an explicit None, which
             # used to mean "inherit the integration setting" and now means the default.
             lockout_threshold=_int_or(
@@ -415,6 +400,54 @@ class Scope:
             lockout_duration=_int_or(
                 data.get("lockout_duration"), DEFAULT_LOCKOUT_DURATION
             ),
+        )
+
+
+@dataclass
+class Keypad:
+    """A physical keypad's keystroke buffer.
+
+    Turns a stream of raw keystrokes into a code and submits it against one scope.
+    Kept apart from ``Scope`` so a scope's device only ever carries what decides
+    whether a code is valid, while a keypad's carries what decides when a code is
+    complete -- several physical keypads can feed the same scope, each with its own
+    buffering rules.
+    """
+
+    keypad_id: str
+    name: str
+    scope_id: str
+    #: Fixed code length for keystroke auto-submit. None means wait for a terminator.
+    code_length: int | None = None
+    terminator_keys: list[str] = field(
+        default_factory=lambda: list(DEFAULT_TERMINATOR_KEYS)
+    )
+    inter_key_timeout: float = DEFAULT_INTER_KEY_TIMEOUT
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise for the store."""
+        return {
+            "keypad_id": self.keypad_id,
+            "name": self.name,
+            "scope_id": self.scope_id,
+            "code_length": self.code_length,
+            "terminator_keys": list(self.terminator_keys),
+            "inter_key_timeout": self.inter_key_timeout,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Keypad:
+        """Rebuild from the store."""
+        terminator_keys = data.get("terminator_keys")
+        return cls(
+            keypad_id=data["keypad_id"],
+            name=data.get("name", ""),
+            scope_id=data["scope_id"],
+            code_length=data.get("code_length"),
+            terminator_keys=list(
+                DEFAULT_TERMINATOR_KEYS if terminator_keys is None else terminator_keys
+            ),
+            inter_key_timeout=data.get("inter_key_timeout", DEFAULT_INTER_KEY_TIMEOUT),
         )
 
 
