@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import HyperPasscodeConfigEntry
 from .const import (
     ATTR_CREDENTIAL_ID,
+    ATTR_IN_GRACE_PERIOD,
     ATTR_LABEL,
     ATTR_PERSON,
     ATTR_REASON,
@@ -70,6 +71,7 @@ class ScopeCodeEventEntity(EventEntity, HyperPasscodeScopeEntity):
                 ATTR_PERSON: result.person,
                 ATTR_SOURCE: result.source,
                 ATTR_REASON: str(result.reason) if result.reason else None,
+                ATTR_IN_GRACE_PERIOD: result.accepted_in_grace,
             },
         )
         self.async_write_ha_state()

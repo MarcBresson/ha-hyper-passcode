@@ -97,6 +97,8 @@ def test_v1_payload_loads_completely():
     assert data.secrets["cred-1"]["use_count"] == 7
     assert data.audit[0].outcome is Outcome.VALID
     assert data.audit[0].label == "Cleaner"
+    # Written before the grace flag existed, so the use it records was a counted one.
+    assert data.audit[0].in_grace is False
 
 
 def test_a_credential_is_assembled_from_both_halves():
@@ -259,6 +261,15 @@ def test_scope_and_audit_round_trip():
         timestamp=WHEN, scope_id="s", outcome=Outcome.INVALID, source="ui"
     )
     assert AuditEntry.from_dict(entry.to_dict()).to_dict() == entry.to_dict()
+
+    graced = AuditEntry(
+        timestamp=WHEN,
+        scope_id="s",
+        outcome=Outcome.VALID,
+        source="keypad",
+        in_grace=True,
+    )
+    assert AuditEntry.from_dict(graced.to_dict()).in_grace is True
 
 
 async def test_the_integration_loads_from_both_stores(

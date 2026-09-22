@@ -25,6 +25,7 @@ from homeassistant.util import dt as dt_util
 from . import audit
 from .const import (
     ATTR_CREDENTIAL_ID,
+    ATTR_IN_GRACE_PERIOD,
     ATTR_LABEL,
     ATTR_OUTCOME,
     ATTR_PERSON,
@@ -106,6 +107,17 @@ class SubmissionResult:
     in_grace: bool = False
 
     @property
+    def accepted_in_grace(self) -> bool:
+        """Whether an *accepted* use fell inside the re-entry grace period.
+
+        ``in_grace`` on its own only says the window was still open, which is asked of
+        every code that was recognised, refused ones included. The activity surfaces
+        want the narrower question: a use that never happened was excused from nothing,
+        and reporting it as graced would read as though the code had been let in.
+        """
+        return self.valid and self.in_grace
+
+    @property
     def event_type(self) -> EventType:
         """The event entity type this result should fire."""
         if self.valid:
@@ -145,6 +157,8 @@ class ScopeRuntime:
     cancel_buffer_timer: CALLBACK_TYPE | None = None
     last_used: datetime | None = None
     last_label: str | None = None
+    last_credential_id: str | None = None
+    last_in_grace: bool = False
     last_result: SubmissionResult | None = None
     last_result_at: datetime | None = None
     last_result_dry_run: bool = False
@@ -303,6 +317,8 @@ class HyperPasscodeCoordinator:
             if runtime.last_used is None or entry.timestamp > runtime.last_used:
                 runtime.last_used = entry.timestamp
                 runtime.last_label = entry.label
+                runtime.last_credential_id = entry.credential_id
+                runtime.last_in_grace = entry.in_grace
 
     @callback
     def async_shutdown(self) -> None:
@@ -447,6 +463,8 @@ class HyperPasscodeCoordinator:
             # last-used sensor reads synchronously.
             runtime.last_used = now
             runtime.last_label = credential.label
+            runtime.last_credential_id = credential.credential_id
+            runtime.last_in_grace = result.in_grace
             self._reset_failures(scope_id)
             self.async_save_credential(credential)
             async_dispatcher_send(
@@ -564,6 +582,7 @@ class HyperPasscodeCoordinator:
             person=result.person,
             reason=str(result.reason) if result.reason else None,
             typed=code if (not result.valid and self.log_failed_plaintext) else None,
+            in_grace=result.accepted_in_grace,
         )
         audit.append(self.data.audit, entry, self.audit_log_size)
         self.store.async_schedule_save()
@@ -586,6 +605,7 @@ class HyperPasscodeCoordinator:
                 ATTR_LABEL: result.label,
                 ATTR_PERSON: result.person,
                 ATTR_SOURCE: result.source,
+                ATTR_IN_GRACE_PERIOD: result.accepted_in_grace,
             },
         )
 

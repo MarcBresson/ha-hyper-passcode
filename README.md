@@ -66,8 +66,8 @@ Read-only:
 
 | Entity | Per | Purpose |
 |---|---|---|
-| `event.<scope>_code` | scope | Fires on every submission, with the outcome and reason |
-| `sensor.<scope>_last_used` | scope | When a code was last accepted, and which one |
+| `event.<scope>_code` | scope | Fires on every submission, with the outcome, the reason and the code that matched |
+| `sensor.<scope>_last_used` | scope | When a code was last accepted, which one, and whether the use was inside its grace period |
 | `sensor.<scope>_last_result` | scope | Verdict on the last attempt, with the reason, the code it matched and whether it was only a test |
 | `sensor.<scope>_failed_attempts` | scope | Consecutive failures since the last success |
 | `binary_sensor.<scope>_lockout` | scope | On while the scope is refusing submissions |
@@ -239,7 +239,8 @@ YAML:
 - Locked out after too many failures
 
 Any of the code triggers can be narrowed to a single credential. Trigger data carries
-`label`, `credential_id`, `person`, `source` and `reason`.
+`label`, `credential_id`, `person`, `source`, `reason` and `in_grace_period` — the last
+being true only on an accepted use that a re-entry grace period excused from `max_uses`.
 
 There are two device conditions as well: "is locked out" and "a credential is currently
 valid".
@@ -292,6 +293,10 @@ The uses still happen: the door opens, the actions run, the audit log records th
 `sensor.<code>_uncounted_uses` reports — the difference between the two is what came off
 `max_uses`. `sensor.<code>_last_uncounted_use` says when a grace period last did anything,
 and stays unknown until one does. Both sit under Diagnostic on the code's device.
+
+On the scope's side the same fact travels with the activity: `in_grace_period` on the
+event entity, the bus event and `sensor.<scope>_last_used`, and an `in_grace` column in
+the audit log and its exports. It is only ever true of a use that was accepted.
 
 `select.<code>_re_entry_grace_window` decides where the window is measured from. With a
 five-minute grace on a one-time code first used at 12:00:

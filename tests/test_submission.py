@@ -178,6 +178,102 @@ async def test_an_uncounted_use_still_reaches_the_audit_log_and_the_uses_sensor(
     assert last_uncounted == last_used
 
 
+async def test_a_graced_use_says_which_code_it_was_and_that_it_was_free(
+    hass: HomeAssistant, entry, coordinator, freezer
+):
+    scope = await make_scope_with_action(coordinator)
+    await hass.async_block_till_done()
+    credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300, label="Delivery"
+    )
+    event_entity = er.async_get(hass).async_get_entity_id(
+        "event", DOMAIN, f"{scope.scope_id}_code"
+    )
+    last_used = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{scope.scope_id}_last_used"
+    )
+    events = async_capture_events(hass, EVENT_SUBMISSION)
+
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    # The first use is an ordinary one, and every surface says so.
+    assert events[0].data["in_grace_period"] is False
+    assert state_of(hass, event_entity).attributes["in_grace_period"] is False
+    assert state_of(hass, last_used).attributes["in_grace_period"] is False
+
+    freezer.tick(timedelta(minutes=2))
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    assert events[1].data["credential_id"] == credential.credential_id
+    assert events[1].data["in_grace_period"] is True
+
+    attributes = state_of(hass, event_entity).attributes
+    assert attributes["credential_id"] == credential.credential_id
+    assert attributes["in_grace_period"] is True
+
+    # The scope's last-used sensor carries the id as well as the label, so an
+    # automation can match on something that renaming the code will not change.
+    attributes = state_of(hass, last_used).attributes
+    assert attributes["label"] == "Delivery"
+    assert attributes["credential_id"] == credential.credential_id
+    assert attributes["in_grace_period"] is True
+
+    assert [row.in_grace for row in coordinator.data.audit] == [False, True]
+
+
+async def test_a_refused_code_is_never_reported_as_graced(
+    hass: HomeAssistant, entry, coordinator, freezer
+):
+    # in_grace answers "is the window open", which stays true of a code that has
+    # just been refused for something else. Nothing came through the door, so the
+    # activity surfaces must not claim a use was excused.
+    scope = await make_scope_with_action(coordinator)
+    await hass.async_block_till_done()
+    credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300
+    )
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_update_credential(
+        credential.credential_id, {"enabled": False}
+    )
+    freezer.tick(timedelta(minutes=1))
+    events = async_capture_events(hass, EVENT_SUBMISSION)
+
+    result = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    assert result.reason is RejectionReason.DISABLED
+    assert result.in_grace is True
+    assert result.accepted_in_grace is False
+    assert events[0].data["in_grace_period"] is False
+    assert coordinator.data.audit[-1].in_grace is False
+
+
+async def test_the_scope_remembers_the_graced_use_across_a_reload(
+    hass: HomeAssistant, entry, coordinator, freezer
+):
+    # Last-used is rebuilt from the audit log rather than persisted separately, so
+    # the grace flag has to survive in the row for the sensor to still know.
+    scope = await make_scope_with_action(coordinator)
+    credential, code = await coordinator.async_create_otp(
+        scope_id=scope.scope_id, grace_period_seconds=300, label="Delivery"
+    )
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    freezer.tick(timedelta(minutes=2))
+    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await hass.async_block_till_done()
+
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    runtime = entry.runtime_data.runtime(scope.scope_id)
+    assert runtime.last_label == "Delivery"
+    assert runtime.last_credential_id == credential.credential_id
+    assert runtime.last_in_grace is True
+
+
 async def test_testing_a_code_inside_its_grace_period_records_nothing(
     hass: HomeAssistant, coordinator, freezer
 ):

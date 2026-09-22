@@ -189,3 +189,5 @@ ATTR_SOURCE: Final = "source"
 ATTR_REASON: Final = "reason"
 ATTR_OUTCOME: Final = "outcome"
 ATTR_TAGS: Final = "tags"
+#: Reported on accepted uses only: a refused code was excused from nothing.
+ATTR_IN_GRACE_PERIOD: Final = "in_grace_period"

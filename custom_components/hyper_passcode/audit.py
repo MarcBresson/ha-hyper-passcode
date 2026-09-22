@@ -23,6 +23,7 @@ CSV_COLUMNS = (
     "person",
     "source",
     "typed",
+    "in_grace",
 )
 
 

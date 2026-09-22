@@ -440,6 +440,9 @@ class AuditEntry:
     #: What was actually typed. Only ever populated when the ``log_failed_plaintext``
     #: setting is on, because a failed attempt is usually a typo of a *real* code.
     typed: str | None = None
+    #: Whether the accepted use fell inside the credential's re-entry grace period,
+    #: and so was not charged against ``max_uses``. Always false on a refusal.
+    in_grace: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise for the store."""
@@ -453,6 +456,7 @@ class AuditEntry:
             "person": self.person,
             "reason": self.reason,
             "typed": self.typed,
+            "in_grace": self.in_grace,
         }
 
     @classmethod
@@ -471,4 +475,6 @@ class AuditEntry:
             person=data.get("person"),
             reason=data.get("reason"),
             typed=data.get("typed"),
+            # Rows written before the field existed simply read as "not excused".
+            in_grace=bool(data.get("in_grace", False)),
         )

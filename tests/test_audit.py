@@ -73,3 +73,18 @@ def test_renderers_preserve_the_order_they_are_given():
     csv_lines = audit.to_csv(ordered).strip().splitlines()
     assert csv_lines[0].startswith("timestamp,scope_id,outcome")
     assert [line.split(",")[5] for line in csv_lines[1:]] == labels
+
+
+def test_an_export_says_which_uses_a_grace_period_excused():
+    graced = entry(0)
+    graced.in_grace = True
+    rendered = [graced, entry(1)]
+
+    assert [row["in_grace"] for row in json.loads(audit.to_json(rendered))] == [
+        True,
+        False,
+    ]
+
+    csv_lines = audit.to_csv(rendered).strip().splitlines()
+    assert csv_lines[0].endswith(",in_grace")
+    assert [line.split(",")[-1] for line in csv_lines[1:]] == ["True", "False"]

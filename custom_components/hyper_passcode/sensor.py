@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import HyperPasscodeConfigEntry
 from .const import (
     ATTR_CREDENTIAL_ID,
+    ATTR_IN_GRACE_PERIOD,
     ATTR_LABEL,
     ATTR_PERSON,
     ATTR_REASON,
@@ -91,9 +92,18 @@ class ScopeLastUsedSensor(SensorEntity, HyperPasscodeScopeEntity):
         return self.coordinator.runtime(self.scope_id).last_used
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | None]:
-        """Which credential it was."""
-        return {ATTR_LABEL: self.coordinator.runtime(self.scope_id).last_label}
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Which code it was, and whether the use was free.
+
+        The label is what a dashboard shows, but it is only as stable as the name
+        somebody gave the code, so the id travels with it for automations to match on.
+        """
+        runtime = self.coordinator.runtime(self.scope_id)
+        return {
+            ATTR_LABEL: runtime.last_label,
+            ATTR_CREDENTIAL_ID: runtime.last_credential_id,
+            ATTR_IN_GRACE_PERIOD: runtime.last_in_grace,
+        }
 
 
 class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
