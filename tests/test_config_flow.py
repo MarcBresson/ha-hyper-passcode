@@ -27,7 +27,7 @@ from custom_components.hyper_passcode.const import (
     StoreMethod,
 )
 from custom_components.hyper_passcode.models import Policy
-from tests.helpers import set_number, set_select, state_of
+from tests.helpers import set_number, set_select, set_text, state_of
 
 
 async def add_scope(hass: HomeAssistant, entry, **fields) -> str:
@@ -135,6 +135,7 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
     scope_id = await add_scope(hass, entry)
     coordinator = entry.runtime_data
     await set_number(hass, "number.front_door_lockout_threshold", 9)
+    await set_text(hass, "text.front_door_terminator_keys", "*")
 
     # Something worth preserving across an edit.
     await coordinator.async_submit(scope_id, "000111", Source.KEYPAD)
@@ -157,9 +158,10 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
 
     scope = entry.runtime_data.scopes[scope_id]
     assert scope.name == "Back Door"
-    # The dialog does not show the lockout settings any more, so it must not wipe
-    # the value the number entity wrote either.
+    # The dialog does not show the lockout settings or the terminator keys any
+    # more, so it must not wipe what those entities wrote either.
     assert scope.lockout_threshold == 9
+    assert scope.terminator_keys == ["*"]
     # Editing a scope must not reset counters or half-typed codes.
     assert entry.runtime_data.runtime(scope_id).failed_attempts == 1
 

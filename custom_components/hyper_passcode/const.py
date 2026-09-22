@@ -175,7 +175,6 @@ SERVICE_CREATE_OTP: Final = "create_otp"
 SERVICE_REVOKE: Final = "revoke"
 SERVICE_SET_ENABLED: Final = "set_enabled"
 SERVICE_TEST_CODE: Final = "test_code"
-SERVICE_REVOKE_ALL_GUESTS: Final = "revoke_all_guests"
 SERVICE_EXPORT_AUDIT: Final = "export_audit"
 
 # Common attribute / field names.
@@ -188,6 +187,5 @@ ATTR_PERSON: Final = "person"
 ATTR_SOURCE: Final = "source"
 ATTR_REASON: Final = "reason"
 ATTR_OUTCOME: Final = "outcome"
-ATTR_TAGS: Final = "tags"
 #: Reported on accepted uses only: a refused code was excused from nothing.
 ATTR_IN_GRACE_PERIOD: Final = "in_grace_period"

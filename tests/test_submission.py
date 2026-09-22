@@ -573,16 +573,17 @@ async def test_failed_plaintext_is_recorded_only_when_asked(
     assert coordinator.data.audit[-1].typed == "000111"
 
 
-async def test_revoke_all_filters_by_tag(hass: HomeAssistant, coordinator):
-    scope = await make_scope_with_action(coordinator)
+async def test_revoke_all_filters_by_scope(hass: HomeAssistant, coordinator):
+    front = await make_scope_with_action(coordinator)
+    garage = await make_scope_with_action(coordinator, name="Garage")
     guest, _ = await coordinator.async_create_credential(
-        label="Guest", scope_ids=[scope.scope_id], tags=["guest"]
+        label="Guest", scope_ids=[front.scope_id]
     )
     household, _ = await coordinator.async_create_credential(
-        label="Household", scope_ids=[scope.scope_id], tags=["family"]
+        label="Household", scope_ids=[garage.scope_id]
     )
 
-    revoked = await coordinator.async_revoke_all(tags=["guest"])
+    revoked = await coordinator.async_revoke_all(scope_id=front.scope_id)
 
     assert revoked == 1
     assert guest.revoked is True

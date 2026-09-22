@@ -24,7 +24,7 @@ device-specific code.
 Codes
 
 - Numeric PINs or alphanumeric codes, either generated or chosen
-- Labels, tags, notes, and an owning `person`
+- Labels, notes, and an owning `person`
 - One code can work on several scopes, each with its own grant
 - Weak-code rejection for repeated digits, sequential runs and a blocklist you control
 - Collision refusal, so two codes can never be confused in the log
@@ -78,6 +78,7 @@ Settings, editable from the device page, a dashboard or an automation:
 | Entity | Per | Purpose |
 |---|---|---|
 | `number.<scope>_code_length` | scope | Auto-submit at this length. `0` waits for a terminator |
+| `text.<scope>_terminator_keys` | scope | Comma-separated keys that submit the buffer, `#` by default |
 | `number.<scope>_inter_key_timeout` | scope | Seconds before a half-typed code is dropped |
 | `number.<scope>_lockout_threshold` | scope | Failures before lockout, `5` by default. `0` disables it |
 | `number.<scope>_lockout_duration` | scope | How long a lockout lasts, `300s` by default |
@@ -90,7 +91,6 @@ Settings, editable from the device page, a dashboard or an automation:
 | `datetime.<code>_valid_from` | code | Start of the validity window |
 | `datetime.<code>_valid_until` | code | End of the validity window |
 | `text.<code>_notes` | code | Free text |
-| `text.<code>_tags` | code | Comma-separated, and what `revoke_all` filters on |
 | `switch.<code>_enabled` | code | Turns a code off without deleting it |
 | `switch.<code>_keep_viewable` | code | Off discards the stored copy of the code |
 | `sensor.<code>_uses` | code | Every accepted use, counted or not |
@@ -120,13 +120,13 @@ from Settings → Devices & Services.
 A scope is a thing codes are entered against. It shows up as a device with its own entities.
 
 Go to Settings → Devices & Services → HyperPasscode and press **Add scope**. You give it a
-name, and optionally an icon, terminator keys, and default actions to run whenever a valid
-code is entered here — which is what lets the common case work without any automation at
-all.
+name, and optionally default actions to run whenever a valid code is entered
+here — which is what lets the common case work without any automation at all.
 
-Everything else about a scope is a number entity on its device: the code length,
-the inter-key timeout, and the two lockout settings. Open the scope's device page to
-change them, or set them from an automation like any other number.
+Everything else about a scope lives on its device: the code length, the inter-key
+timeout and the two lockout settings as numbers, and the terminator keys as a
+comma-separated text. Open the scope's device page to change them, or set them from an
+automation like any other entity.
 
 Scopes can be edited or deleted from the integration page afterwards. Editing one takes
 effect immediately and leaves its lockout counters and any half-typed code alone.
@@ -394,7 +394,7 @@ many-to-many, and nesting it under one of its scopes would hide the others.
 Almost every setting sits on one of those devices as an entity rather than in a dialog.
 The add and edit forms keep only what an entity cannot express: the name, the code itself,
 which scopes it opens, the action sequence, and the schedule and condition pickers.
-Everything else — thresholds, limits, dates, notes, tags — is a number, datetime, text or
+Everything else — thresholds, limits, dates, notes — is a number, datetime, text or
 switch entity, which means it is readable in a template, settable from an automation, and
 recorded in history. Writing one goes straight back to the subentry it came from, so a value
 set from a dashboard persists exactly as a dialog field did.

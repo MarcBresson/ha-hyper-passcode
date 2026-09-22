@@ -626,7 +626,6 @@ class HyperPasscodeCoordinator:
             )
             runtime.script_source = list(scope.default_actions)
 
-        credential = self._credentials.get(result.credential_id or "")
         try:
             await runtime.script.async_run(
                 {
@@ -636,7 +635,6 @@ class HyperPasscodeCoordinator:
                     ATTR_LABEL: result.label,
                     ATTR_PERSON: result.person,
                     ATTR_SOURCE: result.source,
-                    "tags": list(credential.tags) if credential else [],
                 },
                 context=context,
             )
@@ -817,7 +815,6 @@ class HyperPasscodeCoordinator:
         code_type: CodeType = CodeType.PIN,
         keep_viewable: bool = False,
         owner: str | None = None,
-        tags: list[str] | None = None,
         notes: str = "",
         policy: Policy | None = None,
         length: int | None = None,
@@ -848,7 +845,6 @@ class HyperPasscodeCoordinator:
             plaintext=code if keep_viewable else None,
             keep_viewable=keep_viewable,
             owner=owner,
-            tags=list(tags or []),
             notes=notes,
             policy=policy or Policy(),
             grants=[Grant(scope_id=sid) for sid in scope_ids or []],
@@ -1146,17 +1142,13 @@ class HyperPasscodeCoordinator:
         """Temporarily enable or disable a credential."""
         await self.async_update_credential(credential_id, {"enabled": enabled})
 
-    async def async_revoke_all(
-        self, *, scope_id: str | None = None, tags: list[str] | None = None
-    ) -> int:
+    async def async_revoke_all(self, *, scope_id: str | None = None) -> int:
         """Revoke every matching credential. Returns how many were affected."""
         revoked = 0
         for credential in list(self._credentials.values()):
             if credential.revoked:
                 continue
             if scope_id is not None and credential.grant_for(scope_id) is None:
-                continue
-            if tags and not set(tags) & set(credential.tags):
                 continue
             credential.revoked = True
             credential.updated_at = dt_util.utcnow()

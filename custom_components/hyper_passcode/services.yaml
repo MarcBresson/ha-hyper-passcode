@@ -94,10 +94,6 @@ create_code:
         entity:
           filter:
             domain: person
-    tags:
-      selector:
-        text:
-          multiple: true
     notes:
       selector:
         text:
@@ -244,10 +240,6 @@ update_code:
         entity:
           filter:
             domain: person
-    tags:
-      selector:
-        text:
-          multiple: true
     notes:
       selector:
         text:
@@ -342,11 +334,6 @@ revoke_all:
     scope_id:
       selector:
         text:
-    tags:
-      example: guest
-      selector:
-        text:
-          multiple: true
 
 export_audit:
   fields:
@@ -372,10 +359,6 @@ create_scope:
       example: Front Door
       selector:
         text:
-    icon:
-      default: mdi:dialpad
-      selector:
-        icon:
     default_actions:
       selector:
         action:
@@ -420,9 +403,6 @@ update_scope:
     name:
       selector:
         text:
-    icon:
-      selector:
-        icon:
     default_actions:
       selector:
         action:

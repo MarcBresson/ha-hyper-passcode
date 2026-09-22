@@ -163,7 +163,6 @@ class Credential:
     revoked: bool = False
     #: A ``person.*`` entity id, when the credential belongs to somebody.
     owner: str | None = None
-    tags: list[str] = field(default_factory=list)
     notes: str = ""
     policy: Policy = field(default_factory=Policy)
     grants: list[Grant] = field(default_factory=list)
@@ -262,7 +261,6 @@ class Credential:
             "code_type": str(self.code_type),
             "keep_viewable": self.keep_viewable,
             "owner": self.owner,
-            "tags": list(self.tags),
             "notes": self.notes,
             "policy": self.policy.to_dict(),
             "grants": [g.to_dict() for g in self.grants],
@@ -305,7 +303,6 @@ class Credential:
             enabled=secret.get("enabled", True),
             revoked=secret.get("revoked", False),
             owner=config.get("owner"),
-            tags=list(config.get("tags") or []),
             notes=config.get("notes", ""),
             policy=Policy.from_dict(config.get("policy") or {}),
             grants=[Grant.from_dict(g) for g in config.get("grants") or []],
@@ -344,7 +341,6 @@ class Credential:
             enabled=data.get("enabled", True),
             revoked=data.get("revoked", False),
             owner=data.get("owner"),
-            tags=list(data.get("tags") or []),
             notes=data.get("notes", ""),
             policy=Policy.from_dict(data.get("policy") or {}),
             grants=[Grant.from_dict(g) for g in data.get("grants") or []],
@@ -372,7 +368,6 @@ class Scope:
 
     scope_id: str
     name: str
-    icon: str = "mdi:dialpad"
     #: Home Assistant action sequence run on a valid code, so the common case needs
     #: no automation at all.
     default_actions: list[dict[str, Any]] = field(default_factory=list)
@@ -391,7 +386,6 @@ class Scope:
         return {
             "scope_id": self.scope_id,
             "name": self.name,
-            "icon": self.icon,
             "default_actions": self.default_actions,
             "code_length": self.code_length,
             "terminator_keys": list(self.terminator_keys),
@@ -407,7 +401,6 @@ class Scope:
         return cls(
             scope_id=data["scope_id"],
             name=data.get("name", ""),
-            icon=data.get("icon", "mdi:dialpad"),
             default_actions=list(data.get("default_actions") or []),
             code_length=data.get("code_length"),
             terminator_keys=list(

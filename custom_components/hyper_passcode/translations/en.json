@@ -26,7 +26,7 @@
       "step": {
         "user": {
           "title": "Add code",
-          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits, the re-entry grace period, notes and tags are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
+          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits, the re-entry grace period and notes are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
           "data": {
             "name": "Name",
             "code": "Code",
@@ -56,7 +56,7 @@
         },
         "reconfigure": {
           "title": "Edit code",
-          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits, the re-entry grace period, notes and tags live on this code's device, not in this dialog.",
+          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits, the re-entry grace period and notes live on this code's device, not in this dialog.",
           "data": {
             "name": "Name",
             "code": "New code",
@@ -85,16 +85,13 @@
       "step": {
         "user": {
           "title": "Add scope",
-          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.\n\nCode length, inter-key timeout and the lockout settings are number entities on that device, so they can be tuned without coming back here.",
+          "description": "A scope is something codes are entered against, such as a front door, a gate or an alarm. It becomes a device with its own entities.\n\nCode length, inter-key timeout, the terminator keys and the lockout settings all live on that device, so they can be tuned without coming back here.",
           "data": {
             "name": "Name",
-            "icon": "Icon",
-            "default_actions": "Default actions",
-            "terminator_keys": "Terminator keys"
+            "default_actions": "Default actions"
           },
           "data_description": {
-            "default_actions": "Run whenever a valid code is entered here, so the common case needs no automation at all.",
-            "terminator_keys": "Keys that submit what has been typed so far, usually # or *."
+            "default_actions": "Run whenever a valid code is entered here, so the common case needs no automation at all."
           }
         },
         "reconfigure": {
@@ -102,13 +99,10 @@
           "description": "Changes take effect immediately. Lockout counters and any half-typed code are left alone.",
           "data": {
             "name": "Name",
-            "icon": "Icon",
-            "default_actions": "Default actions",
-            "terminator_keys": "Terminator keys"
+            "default_actions": "Default actions"
           },
           "data_description": {
-            "default_actions": "Run whenever a valid code is entered here.",
-            "terminator_keys": "Keys that submit what has been typed so far."
+            "default_actions": "Run whenever a valid code is entered here."
           }
         }
       }
@@ -266,8 +260,8 @@
       "valid_until": { "name": "Valid until" }
     },
     "text": {
-      "notes": { "name": "Notes" },
-      "tags": { "name": "Tags" }
+      "terminator_keys": { "name": "Terminator keys" },
+      "notes": { "name": "Notes" }
     }
   },
   "services": {
@@ -316,7 +310,6 @@
         "code_type": { "name": "Code type", "description": "Digits only, or letters and digits." },
         "keep_viewable": { "name": "Keep code viewable", "description": "Stores the code in clear so it can be read back later. Needed to re-share a code; otherwise the code can only be regenerated." },
         "owner": { "name": "Owner", "description": "The person this credential belongs to." },
-        "tags": { "name": "Tags", "description": "Labels for filtering and bulk revocation." },
         "notes": { "name": "Notes", "description": "Free text." },
         "valid_from": { "name": "Valid from", "description": "Not usable before this moment." },
         "valid_until": { "name": "Valid until", "description": "Not usable from this moment on." },
@@ -363,7 +356,6 @@
         "scope_ids": { "name": "Scopes", "description": "The scopes this code works on, replacing the current list." },
         "keep_viewable": { "name": "Keep code viewable", "description": "Turning this off discards the stored copy of the code. Turning it on can only keep a code that is still stored." },
         "owner": { "name": "Owner", "description": "The person this credential belongs to." },
-        "tags": { "name": "Tags", "description": "Labels for filtering and bulk revocation, replacing the current list." },
         "notes": { "name": "Notes", "description": "Free text." },
         "valid_from": { "name": "Valid from", "description": "Not usable before this moment. Leave empty to remove the bound." },
         "valid_until": { "name": "Valid until", "description": "Not usable from this moment on. Leave empty to remove the expiry." },
@@ -395,10 +387,9 @@
     },
     "revoke_all": {
       "name": "Revoke all codes",
-      "description": "The panic wipe. Revokes every credential matching the filters, or all of them when no filter is given.",
+      "description": "The panic wipe. Revokes every credential granted on a scope, or all of them when no scope is given.",
       "fields": {
-        "scope_id": { "name": "Scope", "description": "Only revoke credentials granted on this scope." },
-        "tags": { "name": "Tags", "description": "Only revoke credentials carrying one of these tags, such as guest." }
+        "scope_id": { "name": "Scope", "description": "Only revoke credentials granted on this scope." }
       }
     },
     "export_audit": {
@@ -415,7 +406,6 @@
       "description": "Adds a target that codes are entered against, such as a door, a gate or an alarm. Becomes a device carrying its own entities.",
       "fields": {
         "name": { "name": "Name", "description": "What this scope is called." },
-        "icon": { "name": "Icon", "description": "Icon for the scope's entities." },
         "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered, so the common case needs no automation at all." },
         "code_length": { "name": "Code length", "description": "Submit automatically once this many keys have been pressed. Leave empty to wait for a terminator key." },
         "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer, typically # or *." },
@@ -430,7 +420,6 @@
       "fields": {
         "scope_id": { "name": "Scope", "description": "The scope to change." },
         "name": { "name": "Name", "description": "What this scope is called." },
-        "icon": { "name": "Icon", "description": "Icon for the scope's entities." },
         "default_actions": { "name": "Default actions", "description": "Run whenever a valid code is entered." },
         "code_length": { "name": "Code length", "description": "Submit automatically at this length." },
         "terminator_keys": { "name": "Terminator keys", "description": "Keys that submit the buffer." },

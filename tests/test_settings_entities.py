@@ -131,6 +131,63 @@ async def test_a_lockout_threshold_set_from_its_entity_is_enforced(
 
 
 # ----------------------------------------------------------------------
+# Scope texts
+# ----------------------------------------------------------------------
+
+
+async def test_a_new_scope_shows_its_terminator_keys(hass: HomeAssistant, entry, scope):
+    await hass.async_block_till_done()
+
+    # The model's list, spelled the way a text entity has to spell it.
+    assert state_of(hass, "text.front_door_terminator_keys").state == "#"
+
+
+async def test_terminator_keys_set_from_the_entity_govern_the_keypad(
+    hass: HomeAssistant, entry, scope
+):
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    _credential, code = await coordinator.async_create_credential(
+        label="Cleaner", code="4951", scope_ids=[scope.scope_id]
+    )
+    await hass.async_block_till_done()
+
+    await set_text(hass, "text.front_door_terminator_keys", "*, B")
+    assert coordinator.scopes[scope.scope_id].terminator_keys == ["*", "B"]
+    # And it reached the subentry, so it is still there after a restart.
+    assert entry.subentries[scope.scope_id].data["terminator_keys"] == ["*", "B"]
+
+    for key in code:
+        assert await coordinator.async_submit_key(scope.scope_id, key) is None
+    # "#" is no longer a terminator, so it goes into the buffer like any other key,
+    # while "B" now submits what was typed -- including that stray "#".
+    assert await coordinator.async_submit_key(scope.scope_id, "#") is None
+    result = await coordinator.async_submit_key(scope.scope_id, "B")
+    assert result is not None
+    assert result.valid is False
+
+    for key in code:
+        await coordinator.async_submit_key(scope.scope_id, key)
+    result = await coordinator.async_submit_key(scope.scope_id, "*")
+    assert result is not None
+    assert result.valid is True
+
+
+async def test_emptying_the_terminator_keys_leaves_no_terminator(
+    hass: HomeAssistant, entry, scope
+):
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+
+    await set_text(hass, "text.front_door_terminator_keys", "")
+
+    assert coordinator.scopes[scope.scope_id].terminator_keys == []
+    # Nothing submits the buffer now, which is a valid way to run a keypad that
+    # only ever uses a fixed code length.
+    assert await coordinator.async_submit_key(scope.scope_id, "#") is None
+
+
+# ----------------------------------------------------------------------
 # Credential policy numbers
 # ----------------------------------------------------------------------
 
@@ -313,32 +370,18 @@ async def test_the_validity_window_can_be_moved_and_cleared(
 
 
 # ----------------------------------------------------------------------
-# Notes, tags, keep viewable
+# Notes, keep viewable
 # ----------------------------------------------------------------------
 
 
-async def test_notes_and_tags_round_trip(hass: HomeAssistant, entry, scope):
+async def test_notes_round_trip(hass: HomeAssistant, entry, scope):
     credential, _code = await a_code(entry.runtime_data, scope)
     await hass.async_block_till_done()
 
     await set_text(hass, "text.cleaner_notes", "Thursdays, back door")
-    await set_text(hass, "text.cleaner_tags", "guest, cleaning")
 
     assert credential.notes == "Thursdays, back door"
-    assert credential.tags == ["guest", "cleaning"]
-    assert state_of(hass, "text.cleaner_tags").state == "guest, cleaning"
-
-
-async def test_tags_set_from_the_entity_drive_bulk_revocation(
-    hass: HomeAssistant, entry, scope
-):
-    coordinator = entry.runtime_data
-    credential, _code = await a_code(coordinator, scope)
-    await hass.async_block_till_done()
-
-    await set_text(hass, "text.cleaner_tags", "guest")
-    assert await coordinator.async_revoke_all(tags=["guest"]) == 1
-    assert credential.revoked is True
+    assert state_of(hass, "text.cleaner_notes").state == "Thursdays, back door"
 
 
 async def test_keep_viewable_can_be_turned_off_but_not_back_on(

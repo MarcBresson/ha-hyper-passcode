@@ -105,7 +105,7 @@ def test_every_entity_translation_key_exists(translations):
     }
     assert set(entity["select"]) == {"grace_mode"}
     assert set(entity["datetime"]) == {"valid_from", "valid_until"}
-    assert set(entity["text"]) == {"notes", "tags"}
+    assert set(entity["text"]) == {"terminator_keys", "notes"}
     assert set(entity["event"]) == {"code"}
 
 

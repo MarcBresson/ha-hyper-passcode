@@ -24,13 +24,12 @@ from homeassistant.config_entries import (
     OptionsFlow,
     SubentryFlowResult,
 )
-from homeassistant.const import CONF_ICON, CONF_NAME
+from homeassistant.const import CONF_NAME
 from homeassistant.helpers.selector import (
     ActionSelector,
     BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
-    IconSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -54,7 +53,6 @@ from .const import (
     DEFAULT_LOG_FAILED_PLAINTEXT,
     DEFAULT_PER_CREDENTIAL_ENTITIES,
     DEFAULT_REJECT_WEAK_CODES,
-    DEFAULT_TERMINATOR_KEYS,
     DEFAULT_WEAK_CODE_BLOCKLIST,
     DOMAIN,
     SUBENTRY_TYPE_CREDENTIAL,
@@ -66,7 +64,6 @@ from .exceptions import CodeCollisionError, WeakCodeError
 from .models import Policy, Scope
 
 ATTR_DEFAULT_ACTIONS = "default_actions"
-ATTR_TERMINATOR_KEYS = "terminator_keys"
 ATTR_CODE = "code"
 ATTR_SCOPE_IDS = "scope_ids"
 ATTR_KEEP_VIEWABLE = "keep_viewable"
@@ -304,8 +301,9 @@ def _scope_schema(current: Mapping[str, Any] | None = None) -> vol.Schema:
     """Build the add/edit form for one scope.
 
     Only what no entity can express. The code length, the inter-key timeout and the
-    two lockout settings are number entities on the scope's own device, so a door's
-    threshold can be changed from a dashboard rather than from here.
+    two lockout settings are number entities on the scope's own device, and the
+    terminator keys are a text entity there, so a door's threshold can be changed
+    from a dashboard rather than from here.
     """
     current = current or {}
 
@@ -315,16 +313,8 @@ def _scope_schema(current: Mapping[str, Any] | None = None) -> vol.Schema:
                 CONF_NAME, default=current.get(CONF_NAME, vol.UNDEFINED)
             ): TextSelector(),
             vol.Optional(
-                CONF_ICON, default=current.get(CONF_ICON) or "mdi:dialpad"
-            ): IconSelector(),
-            vol.Optional(
                 ATTR_DEFAULT_ACTIONS, default=current.get(ATTR_DEFAULT_ACTIONS) or []
             ): ActionSelector(),
-            vol.Optional(
-                ATTR_TERMINATOR_KEYS,
-                default=current.get(ATTR_TERMINATOR_KEYS)
-                or list(DEFAULT_TERMINATOR_KEYS),
-            ): TextSelector(TextSelectorConfig(multiple=True)),
         }
     )
 
@@ -335,8 +325,8 @@ def _scope_entry(
     """Turn form input into a subentry title and payload.
 
     ``current`` is the scope's stored data, and the form is laid over it rather than
-    replacing it: the fields this dialog no longer shows are owned by the scope's
-    number entities, and an edit here must leave them exactly as they were.
+    replacing it: the fields this dialog no longer shows are owned by the scope's own
+    entities, and an edit here must leave them exactly as they were.
 
     Routed through ``Scope`` so a scope created here and one created through the
     ``create_scope`` action are stored in exactly the same shape.
@@ -388,9 +378,9 @@ def _credential_schema(
 ) -> vol.Schema:
     """Build the add/edit form for one credential.
 
-    Only what no entity can express. The validity window, the use limits, the notes
-    and the tags are all entities on the code's own device, so a guest code can be
-    extended from a dashboard instead of through this dialog.
+    Only what no entity can express. The validity window, the use limits and the
+    notes are all entities on the code's own device, so a guest code can be extended
+    from a dashboard instead of through this dialog.
 
     When editing, the code field is left blank and means "leave the code alone" --
     a code that is not viewable cannot be shown back, so there is nothing to

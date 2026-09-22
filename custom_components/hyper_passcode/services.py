@@ -27,7 +27,6 @@ from .const import (
     ATTR_LABEL,
     ATTR_SCOPE_ID,
     ATTR_SOURCE,
-    ATTR_TAGS,
     DEFAULT_GRACE_MODE,
     DOMAIN,
     SERVICE_CLEAR_BUFFER,
@@ -112,7 +111,6 @@ CREATE_CODE_SCHEMA = vol.Schema(
         vol.Optional("code_type", default=str(CodeType.PIN)): vol.Coerce(CodeType),
         vol.Optional("keep_viewable", default=False): cv.boolean,
         vol.Optional("owner"): cv.entity_id,
-        vol.Optional(ATTR_TAGS): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("notes", default=""): cv.string,
         **POLICY_FIELDS,
     }
@@ -144,7 +142,6 @@ UPDATE_CODE_SCHEMA = vol.Schema(
         vol.Optional("scope_ids"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("keep_viewable"): cv.boolean,
         vol.Optional("owner"): vol.Any(None, cv.entity_id),
-        vol.Optional(ATTR_TAGS): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("notes"): cv.string,
         **UPDATE_POLICY_FIELDS,
     }
@@ -160,7 +157,6 @@ SET_ENABLED_SCHEMA = vol.Schema(
 REVOKE_ALL_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_SCOPE_ID): cv.string,
-        vol.Optional(ATTR_TAGS): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 
@@ -183,7 +179,6 @@ EXPORT_AUDIT_SCHEMA = vol.Schema(
 CREATE_SCOPE_SCHEMA = vol.Schema(
     {
         vol.Required("name"): cv.string,
-        vol.Optional("icon", default="mdi:dialpad"): cv.icon,
         vol.Optional("default_actions"): cv.SCRIPT_SCHEMA,
         vol.Optional("code_length"): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional("terminator_keys"): vol.All(cv.ensure_list, [cv.string]),
@@ -278,7 +273,6 @@ def async_register_services(hass: HomeAssistant) -> None:
             code_type=data["code_type"],
             keep_viewable=data["keep_viewable"],
             owner=data.get("owner"),
-            tags=data.get(ATTR_TAGS),
             notes=data["notes"],
             policy=_policy_from_call(data),
             length=data.get("length"),
@@ -352,7 +346,7 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def revoke_all(call: ServiceCall) -> ServiceResponse:
         """Revoke every matching credential. The panic wipe."""
         count = await _coordinator(hass).async_revoke_all(
-            scope_id=call.data.get(ATTR_SCOPE_ID), tags=call.data.get(ATTR_TAGS)
+            scope_id=call.data.get(ATTR_SCOPE_ID)
         )
         return {"revoked": count}
 

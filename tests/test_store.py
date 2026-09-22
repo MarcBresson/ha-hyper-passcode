@@ -71,7 +71,6 @@ CREDENTIAL_CONFIG = {
     "code_type": "pin",
     "keep_viewable": False,
     "owner": "person.alex",
-    "tags": ["staff"],
     "notes": "Tuesdays",
     "policy": {
         "valid_from": "2026-09-01T00:00:00+00:00",
@@ -153,7 +152,6 @@ def test_a_sparse_payload_gets_sensible_defaults():
     assert data.audit == []
     assert credential.enabled is True
     assert credential.revoked is False
-    assert credential.tags == []
     assert credential.grants == []
     assert credential.policy.max_uses is None
 
@@ -290,7 +288,6 @@ async def test_the_integration_loads_from_both_stores(
         subentries_data=[
             ConfigSubentryData(
                 data={
-                    "icon": "mdi:door",
                     "default_actions": [{"event": "opened"}],
                     "code_length": 6,
                     "terminator_keys": ["#", "*"],
@@ -365,7 +362,6 @@ async def test_an_entry_from_before_lockout_moved_to_the_scope_still_loads(
         subentries_data=[
             ConfigSubentryData(
                 data={
-                    "icon": "mdi:door",
                     "terminator_keys": ["#"],
                     "lockout_threshold": None,
                     "lockout_duration": None,

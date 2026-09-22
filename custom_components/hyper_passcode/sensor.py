@@ -230,7 +230,6 @@ class CredentialUsesSensor(SensorEntity, HyperPasscodeCredentialEntity):
             "valid_until": policy.valid_until,
             "enabled": credential.enabled,
             "revoked": credential.revoked,
-            "tags": credential.tags,
             "last_used": credential.last_used,
         }
 
