@@ -203,6 +203,19 @@ async def test_the_grace_window_starts_off_and_fixed(hass: HomeAssistant, entry,
     assert state_of(hass, "select.cleaner_re_entry_grace_window").state == "fixed"
 
 
+async def test_a_fresh_codes_usage_readings_start_empty(
+    hass: HomeAssistant, entry, scope
+):
+    await a_code(entry.runtime_data, scope)
+    await hass.async_block_till_done()
+
+    assert state_of(hass, "sensor.cleaner_uses").state == "0"
+    assert state_of(hass, "sensor.cleaner_uncounted_uses").state == "0"
+    # Never used, so there is no timestamp to show rather than a misleading epoch.
+    assert state_of(hass, "sensor.cleaner_last_used").state == STATE_UNKNOWN
+    assert state_of(hass, "sensor.cleaner_last_uncounted_use").state == STATE_UNKNOWN
+
+
 async def test_a_grace_period_set_from_its_entity_is_enforced(
     hass: HomeAssistant, entry, scope, freezer
 ):

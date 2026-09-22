@@ -43,6 +43,7 @@ V1_FIXTURE = {
             "use_count": 7,
             "uncounted_uses": 2,
             "last_counted_use": "2026-09-19T08:00:00+00:00",
+            "last_uncounted_use": "2026-09-19T08:30:00+00:00",
             "last_used": "2026-09-19T08:30:00+00:00",
             "recent_uses": ["2026-09-19T08:30:00+00:00"],
             "created_at": "2026-09-01T09:00:00+00:00",
@@ -195,6 +196,13 @@ def test_an_uncounted_use_is_recorded_without_moving_the_counted_anchor():
     assert credential.uncounted_uses == 1
     assert credential.counted_uses == 1
     assert credential.last_counted_use == WHEN
+    assert credential.last_uncounted_use == WHEN + timedelta(minutes=1)
+
+    # A counted use afterwards leaves the uncounted timestamp where it was, which is
+    # why it cannot just be read off last_used.
+    credential.record_use(WHEN + timedelta(minutes=2))
+    assert credential.last_uncounted_use == WHEN + timedelta(minutes=1)
+    assert credential.last_used == WHEN + timedelta(minutes=2)
 
 
 def test_a_credential_stored_before_grace_periods_loads_with_them_off():
@@ -210,6 +218,7 @@ def test_a_credential_stored_before_grace_periods_loads_with_them_off():
     assert credential.policy.grace_mode is GraceMode.FIXED
     assert credential.uncounted_uses == 0
     assert credential.last_counted_use is None
+    assert credential.last_uncounted_use is None
     assert credential.counted_uses == 3
 
 

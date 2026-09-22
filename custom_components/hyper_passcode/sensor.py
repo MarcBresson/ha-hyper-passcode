@@ -62,7 +62,14 @@ async def async_setup_entry(
         entry,
         coordinator,
         async_add_entities,
-        [CredentialUsesSensor, CredentialCodeSensor, CredentialStoreMethodSensor],
+        [
+            CredentialUsesSensor,
+            CredentialUncountedUsesSensor,
+            CredentialLastUsedSensor,
+            CredentialLastUncountedUseSensor,
+            CredentialCodeSensor,
+            CredentialStoreMethodSensor,
+        ],
     )
 
 
@@ -216,6 +223,86 @@ class CredentialUsesSensor(SensorEntity, HyperPasscodeCredentialEntity):
             "tags": credential.tags,
             "last_used": credential.last_used,
         }
+
+
+class CredentialUncountedUsesSensor(SensorEntity, HyperPasscodeCredentialEntity):
+    """How many of a credential's uses a re-entry grace period excused.
+
+    The difference between this and the Uses sensor is the number that was actually
+    charged against ``max_uses``. Diagnostic rather than primary: it explains the
+    other two numbers rather than being one somebody watches.
+    """
+
+    _attr_translation_key = "uncounted_uses"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_icon = "mdi:counter-off"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, coordinator: HyperPasscodeCoordinator, credential: Credential
+    ) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, credential)
+        self._attr_unique_id = f"{credential.credential_id}_uncounted_uses"
+
+    @property
+    def native_value(self) -> int | None:
+        """How many uses were exempt from the limit."""
+        credential = self.credential
+        return credential.uncounted_uses if credential else None
+
+
+class CredentialLastUsedSensor(SensorEntity, HyperPasscodeCredentialEntity):
+    """When this credential was last accepted, counted or not.
+
+    A timestamp sensor rather than a datetime entity: a datetime entity is settable,
+    and when a code was last used is a record of what happened, not a setting. The
+    scope's equivalent works the same way.
+    """
+
+    _attr_translation_key = "last_used"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-check-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, coordinator: HyperPasscodeCoordinator, credential: Credential
+    ) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, credential)
+        self._attr_unique_id = f"{credential.credential_id}_last_used"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """The last accepted use, or None if it has never been used."""
+        credential = self.credential
+        return credential.last_used if credential else None
+
+
+class CredentialLastUncountedUseSensor(SensorEntity, HyperPasscodeCredentialEntity):
+    """When a re-entry grace period last excused a use.
+
+    Unknown until one has been, which is the quickest way to tell whether a grace
+    period is earning its keep or whether nobody has ever come back inside it.
+    """
+
+    _attr_translation_key = "last_uncounted_use"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-remove-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, coordinator: HyperPasscodeCoordinator, credential: Credential
+    ) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, credential)
+        self._attr_unique_id = f"{credential.credential_id}_last_uncounted_use"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """The last use the grace period excused, if there has been one."""
+        credential = self.credential
+        return credential.last_uncounted_use if credential else None
 
 
 class CredentialCodeSensor(SensorEntity, HyperPasscodeCredentialEntity):

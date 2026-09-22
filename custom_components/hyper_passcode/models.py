@@ -179,6 +179,10 @@ class Credential:
     #: something read out of recent_uses, which is capped and so cannot be trusted to
     #: still hold the use that opened the window.
     last_counted_use: datetime | None = None
+    #: When a re-entry grace period last excused a use. Kept separately because it
+    #: is not recoverable from last_used once an ordinary use follows it, and it is
+    #: the one timestamp that says the grace period is actually doing something.
+    last_uncounted_use: datetime | None = None
     last_used: datetime | None = None
     #: Recent successful uses, newest last, capped at MAX_RECENT_USES. Backs the
     #: per-hour / per-day limits and the anti-replay cooldown.
@@ -241,6 +245,7 @@ class Credential:
             self.last_counted_use = when
         else:
             self.uncounted_uses += 1
+            self.last_uncounted_use = when
         self.recent_uses.append(when)
         if len(self.recent_uses) > MAX_RECENT_USES:
             del self.recent_uses[:-MAX_RECENT_USES]
@@ -278,6 +283,7 @@ class Credential:
             "use_count": self.use_count,
             "uncounted_uses": self.uncounted_uses,
             "last_counted_use": _dt_to_str(self.last_counted_use),
+            "last_uncounted_use": _dt_to_str(self.last_uncounted_use),
             "last_used": _dt_to_str(self.last_used),
             "recent_uses": [_dt_to_str(d) for d in self.recent_uses],
             "created_at": _dt_to_str(self.created_at),
@@ -306,6 +312,7 @@ class Credential:
             use_count=secret.get("use_count", 0),
             uncounted_uses=secret.get("uncounted_uses", 0),
             last_counted_use=_dt_from_str(secret.get("last_counted_use")),
+            last_uncounted_use=_dt_from_str(secret.get("last_uncounted_use")),
             last_used=_dt_from_str(secret.get("last_used")),
             recent_uses=[
                 parsed
@@ -344,6 +351,7 @@ class Credential:
             use_count=data.get("use_count", 0),
             uncounted_uses=data.get("uncounted_uses", 0),
             last_counted_use=_dt_from_str(data.get("last_counted_use")),
+            last_uncounted_use=_dt_from_str(data.get("last_uncounted_use")),
             last_used=_dt_from_str(data.get("last_used")),
             recent_uses=[
                 parsed

@@ -201,6 +201,8 @@
       "last_used": { "name": "Last used" },
       "failed_attempts": { "name": "Failed attempts" },
       "uses": { "name": "Uses" },
+      "uncounted_uses": { "name": "Uncounted uses" },
+      "last_uncounted_use": { "name": "Last uncounted use" },
       "code": { "name": "Code" },
       "store_method": {
         "name": "Store method",

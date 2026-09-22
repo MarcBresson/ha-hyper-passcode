@@ -168,6 +168,15 @@ async def test_an_uncounted_use_still_reaches_the_audit_log_and_the_uses_sensor(
     assert state.attributes["remaining_uses"] == 0
     assert state.attributes["grace_period_seconds"] == 300
 
+    # And the same three readings as entities of their own, so they show up on the
+    # code's device rather than only inside the Uses sensor's attributes.
+    assert state_of(hass, "sensor.delivery_uncounted_uses").state == "1"
+    last_used = state_of(hass, "sensor.delivery_last_used").state
+    last_uncounted = state_of(hass, "sensor.delivery_last_uncounted_use").state
+    assert last_used != STATE_UNKNOWN
+    # The second entry was the free one, so the two agree.
+    assert last_uncounted == last_used
+
 
 async def test_testing_a_code_inside_its_grace_period_records_nothing(
     hass: HomeAssistant, coordinator, freezer

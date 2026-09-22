@@ -93,6 +93,10 @@ Settings, editable from the device page, a dashboard or an automation:
 | `text.<code>_tags` | code | Comma-separated, and what `revoke_all` filters on |
 | `switch.<code>_enabled` | code | Turns a code off without deleting it |
 | `switch.<code>_keep_viewable` | code | Off discards the stored copy of the code |
+| `sensor.<code>_uses` | code | Every accepted use, counted or not |
+| `sensor.<code>_uncounted_uses` | code | How many of those a grace period exempted from `max_uses` |
+| `sensor.<code>_last_used` | code | When it was last accepted |
+| `sensor.<code>_last_uncounted_use` | code | When a grace period last exempted a use; unknown if never |
 | `sensor.<code>_code` | code | The code in clear, when it is kept viewable; unknown otherwise. Its history is purged when the code is discarded |
 | `sensor.<code>_store_method` | code | `plaintext` or `hashed` |
 
@@ -285,7 +289,9 @@ towards `max_uses` — so `max_uses: 1` means one *visit* rather than one door o
 
 The uses still happen: the door opens, the actions run, the audit log records them and
 `sensor.<code>_uses` counts them. What changes is only what they're charged against, which
-`uncounted_uses` on that sensor reports.
+`sensor.<code>_uncounted_uses` reports — the difference between the two is what came off
+`max_uses`. `sensor.<code>_last_uncounted_use` says when a grace period last did anything,
+and stays unknown until one does. Both sit under Diagnostic on the code's device.
 
 `select.<code>_re_entry_grace_window` decides where the window is measured from. With a
 five-minute grace on a one-time code first used at 12:00:
