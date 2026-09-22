@@ -297,7 +297,6 @@ class CredentialUncountedUsesSensor(SensorEntity, HyperPasscodeCredentialEntity)
     _attr_translation_key = "uncounted_uses"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_icon = "mdi:counter-off"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self, coordinator: HyperPasscodeCoordinator, credential: Credential
@@ -324,7 +323,6 @@ class CredentialLastUsedSensor(SensorEntity, HyperPasscodeCredentialEntity):
     _attr_translation_key = "last_used"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-check-outline"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self, coordinator: HyperPasscodeCoordinator, credential: Credential
@@ -350,7 +348,6 @@ class CredentialLastUncountedUseSensor(SensorEntity, HyperPasscodeCredentialEnti
     _attr_translation_key = "last_uncounted_use"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-remove-outline"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self, coordinator: HyperPasscodeCoordinator, credential: Credential
