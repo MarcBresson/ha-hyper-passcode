@@ -529,6 +529,17 @@ class HyperPasscodeCoordinator:
             async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope_id))
             return result
 
+        scope.record_submission(result.valid)
+        self._save_scope_stats(scope)
+
+        # The audit row and events for *this* submission are recorded before
+        # _register_failure/_reset_failures run below. Those dispatch the scope
+        # update that the lockout sensor reads synchronously, stamping its own
+        # state_changed event right there -- recording it first would make a
+        # lockout appear in the activity feed before the failure that caused it.
+        self._record_audit(scope_id, code, result, now)
+        self._fire_events(scope, result)
+
         if result.valid:
             credential = self.get_credential(result.credential_id)  # type: ignore[arg-type]
             credential.record_use(now, counted=not result.in_grace)
@@ -546,12 +557,6 @@ class HyperPasscodeCoordinator:
             )
         else:
             self._register_failure(scope, now)
-
-        scope.record_submission(result.valid)
-        self._save_scope_stats(scope)
-
-        self._record_audit(scope_id, code, result, now)
-        self._fire_events(scope, result)
 
         # Actions run last, after the use is counted, so a failing action cannot be
         # retried to burn through a one-time code.

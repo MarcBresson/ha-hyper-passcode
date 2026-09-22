@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 import pytest
-from homeassistant.const import STATE_UNKNOWN
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
@@ -470,6 +470,44 @@ async def test_lockout_trips_and_then_recovers(hass: HomeAssistant, entry, coord
     # And works again once it lapses.
     coordinator.runtime(scope.scope_id).locked_until = None
     assert (await coordinator.async_submit(scope.scope_id, code)).valid
+
+
+async def test_lockout_activity_appears_after_the_failure_that_caused_it(
+    hass: HomeAssistant, entry, coordinator
+):
+    """The lockout's own activity must sort after the failing submission.
+
+    Both land in the same timestamp-sorted feed: the wrong-code submission as
+    EVENT_SUBMISSION, the lockout as the lockout sensor's state_changed event.
+    Firing them in the wrong order would put the lockout before the failure
+    that caused it, which is confusing to read back.
+    """
+    scope = await coordinator.async_create_scope(
+        name="Gate", lockout_threshold=3, lockout_duration=300
+    )
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{scope.scope_id}_lockout"
+    )
+
+    submissions = async_capture_events(hass, EVENT_SUBMISSION)
+    state_changes = async_capture_events(hass, EVENT_STATE_CHANGED)
+
+    for _ in range(3):
+        await coordinator.async_submit(scope.scope_id, "000111")
+    await hass.async_block_till_done()
+
+    assert state_of(hass, entity_id).state == "on"
+
+    final_submission_time = submissions[-1].time_fired
+    lockout_state_change_time = next(
+        event.time_fired
+        for event in state_changes
+        if event.data["entity_id"] == entity_id
+        and event.data["new_state"].state == "on"
+    )
+    assert final_submission_time <= lockout_state_change_time
 
 
 async def test_lockout_escalates_and_then_caps(hass: HomeAssistant, coordinator):
