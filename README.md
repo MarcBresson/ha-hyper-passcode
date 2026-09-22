@@ -74,7 +74,7 @@ Read-only:
 |---|---|---|
 | `event.<scope>_code` | scope | Fires on every submission, with the outcome, the reason and the code that matched |
 | `sensor.<scope>_last_used` | scope | When a code was last accepted, which one, and whether the use was inside its grace period |
-| `sensor.<scope>_last_result` | scope | Verdict on the last attempt, with the reason, the code it matched and whether it was only a test |
+| `sensor.<scope>_last_test` | scope | Verdict on the last attempt, with the reason, the code it matched and whether it was only a test |
 | `sensor.<scope>_failed_attempts` | scope | Consecutive failures since the last success |
 | `sensor.<scope>_valid_submissions` | scope | Lifetime count of accepted submissions, across every credential ever granted here |
 | `sensor.<scope>_invalid_submissions` | scope | Lifetime count of refused submissions, unaffected by lockouts or restarts |
@@ -96,11 +96,10 @@ Settings, editable from the device page, a dashboard or an automation:
 | `number.<code>_uses_per_hour` | code | Rolling hourly limit. `0` is unlimited |
 | `number.<code>_uses_per_day` | code | Rolling 24-hour limit. `0` is unlimited |
 | `number.<code>_cooldown` | code | Minimum seconds between uses |
-| `number.<code>_re_entry_grace_period` | code | Seconds of re-entry that don't count towards `max_uses`. `0` is off |
-| `select.<code>_re_entry_grace_window` | code | Whether that window is `fixed` or `sliding` |
+| `number.<code>_re_entry_grace_period` | code | Seconds of re-entry that don't count towards `max_uses`. `0` is off. Unavailable while `max_uses` is unlimited |
+| `select.<code>_re_entry_grace_window` | code | Whether that window is `fixed` or `sliding`. Unavailable while `max_uses` is unlimited |
 | `datetime.<code>_valid_from` | code | Start of the validity window |
 | `datetime.<code>_valid_until` | code | End of the validity window |
-| `text.<code>_notes` | code | Free text |
 | `switch.<code>_enabled` | code | Turns a code off without deleting it |
 | `switch.<code>_keep_viewable` | code | Off discards the stored copy of the code |
 | `sensor.<code>_uses` | code | Every accepted use, counted or not |
@@ -236,7 +235,7 @@ Two things about it are worth knowing:
   through several codes without reopening it. The code field is cleared every time and never
   filled back in.
 
-Whichever way it was submitted, the verdict lands on `sensor.<scope>_last_result`.
+Whichever way it was submitted, the verdict lands on `sensor.<scope>_last_test`.
 
 ### One-time codes for deliveries
 
@@ -425,7 +424,7 @@ many-to-many, and nesting it under one of its scopes would hide the others.
 Almost every setting sits on one of those devices as an entity rather than in a dialog.
 The add and edit forms keep only what an entity cannot express: the name, the code itself,
 which scopes it opens, the action sequence, and the schedule and condition pickers.
-Everything else — thresholds, limits, dates, notes — is a number, datetime, text or
+Everything else — thresholds, limits, dates — is a number, datetime, text or
 switch entity, which means it is readable in a template, settable from an automation, and
 recorded in history. Writing one goes straight back to the subentry it came from, so a value
 set from a dashboard persists exactly as a dialog field did.
@@ -484,7 +483,7 @@ recorder:
 The "Test a code" page is the one input surface without this problem, and that is why it is a
 configuration page rather than a text entity on each scope's device. A flow's input travels
 over the websocket into memory and never becomes an event, so nothing about it is recorded.
-The verdict it publishes to `sensor.<scope>_last_result` names the code's label, never the
+The verdict it publishes to `sensor.<scope>_last_test` names the code's label, never the
 code.
 
 ### Who can submit from the page
@@ -501,7 +500,7 @@ what that needs.
 
 "Test only" counts no failures, trips no lockout and writes no audit row. That is the point,
 but it also makes the page an oracle: an admin can work through the code space without
-leaving any of the usual traces. `sensor.<scope>_last_result` is the trace — a run of
+leaving any of the usual traces. `sensor.<scope>_last_test` is the trace — a run of
 `unknown_code` verdicts in its history is what that looks like.
 
 ## Roadmap

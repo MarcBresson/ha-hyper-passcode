@@ -32,7 +32,7 @@ from .entity import (
 )
 from .models import Credential, Scope
 
-#: Every state the last-result sensor can report. An enum sensor raises on anything
+#: Every state the last-test sensor can report. An enum sensor raises on anything
 #: outside its options, so this has to stay in step with ``RejectionReason``.
 RESULT_STATES: list[str] = [
     str(Outcome.VALID),
@@ -57,7 +57,7 @@ async def async_setup_entry(
         async_add_entities,
         [
             ScopeLastUsedSensor,
-            ScopeLastResultSensor,
+            ScopeLastTestSensor,
             ScopeFailedAttemptsSensor,
             ScopeValidSubmissionsSensor,
             ScopeInvalidSubmissionsSensor,
@@ -111,7 +111,7 @@ class ScopeLastUsedSensor(SensorEntity, HyperPasscodeScopeEntity):
         }
 
 
-class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
+class ScopeLastTestSensor(SensorEntity, HyperPasscodeScopeEntity):
     """The verdict on the last code submitted against this scope.
 
     Where ``last_used`` says when a code was last *accepted*, this says what happened
@@ -123,7 +123,7 @@ class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
     sensor's history is what a run of ``unknown_code`` verdicts shows up in.
     """
 
-    _attr_translation_key = "last_result"
+    _attr_translation_key = "last_test"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:clipboard-check-outline"
     # No state class and no unit: both are rejected on an enum sensor.
@@ -131,7 +131,7 @@ class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
     def __init__(self, coordinator: HyperPasscodeCoordinator, scope: Scope) -> None:
         """Set the entity's identity."""
         super().__init__(coordinator, scope)
-        self._attr_unique_id = f"{scope.scope_id}_last_result"
+        self._attr_unique_id = f"{scope.scope_id}_last_test"
         self._attr_options = RESULT_STATES
 
     @property
@@ -142,7 +142,7 @@ class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
         somehow carries no reason degrades to unknown rather than taking the entity
         down with it.
         """
-        result = self.coordinator.runtime(self.scope_id).last_result
+        result = self.coordinator.runtime(self.scope_id).last_test
         if result is None:
             return None
         if result.valid:
@@ -153,7 +153,7 @@ class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
     def extra_state_attributes(self) -> dict[str, object]:
         """Which code it was, why it was refused, and whether it was for real."""
         runtime = self.coordinator.runtime(self.scope_id)
-        result = runtime.last_result
+        result = runtime.last_test
         if result is None:
             return {}
         return {
@@ -161,8 +161,8 @@ class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
             ATTR_LABEL: result.label,
             ATTR_CREDENTIAL_ID: result.credential_id,
             ATTR_PERSON: result.person,
-            "dry_run": runtime.last_result_dry_run,
-            "tested_at": runtime.last_result_at,
+            "dry_run": runtime.last_test_dry_run,
+            "tested_at": runtime.last_test_at,
         }
 
 

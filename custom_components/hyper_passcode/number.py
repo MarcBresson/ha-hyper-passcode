@@ -71,6 +71,10 @@ class PolicyNumberDescription(NumberEntityDescription):
     """
 
     value_fn: Callable[[Policy], int | None]
+    #: Whether the limit currently applies. Unavailable rather than hidden, so an
+    #: automation pointed at the entity id does not have to cope with it appearing
+    #: and disappearing.
+    available_fn: Callable[[Policy], bool] = lambda policy: True
 
 
 def _optional_int(value: float) -> int | None:
@@ -186,6 +190,9 @@ POLICY_NUMBERS: tuple[PolicyNumberDescription, ...] = (
         native_max_value=86400,
         native_step=1,
         value_fn=lambda policy: policy.grace_period_seconds,
+        # A grace period only ever exempts a use from max_uses, so it means nothing
+        # once max_uses is unlimited.
+        available_fn=lambda policy: policy.max_uses is not None,
     ),
     PolicyNumberDescription(
         key="uses_per_hour",
@@ -334,6 +341,14 @@ class PolicyNumber(NumberEntity, HyperPasscodeCredentialEntity):
         super().__init__(coordinator, credential)
         self.entity_description = description
         self._attr_unique_id = f"{credential.credential_id}_{description.key}"
+
+    @property
+    def available(self) -> bool:
+        """Unavailable once the credential is gone, or the limit does not apply."""
+        credential = self.credential
+        if credential is None:
+            return False
+        return self.entity_description.available_fn(credential.policy)
 
     @property
     def native_value(self) -> float | None:

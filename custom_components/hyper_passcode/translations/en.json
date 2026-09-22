@@ -26,7 +26,7 @@
       "step": {
         "user": {
           "title": "Add code",
-          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits, the re-entry grace period and notes are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
+          "description": "Leave the code blank to have one generated. It is shown on the next step only if you tick 'Keep code viewable'.\n\nValidity dates, use limits and the re-entry grace period are entities on the code's own device once it exists, so they can be changed from a dashboard or an automation.",
           "data": {
             "name": "Name",
             "code": "Code",
@@ -56,7 +56,7 @@
         },
         "reconfigure": {
           "title": "Edit code",
-          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits, the re-entry grace period and notes live on this code's device, not in this dialog.",
+          "description": "Leave the code blank to keep the existing one. Use counts and history are unaffected by changes here.\n\nValidity dates, use limits and the re-entry grace period live on this code's device, not in this dialog.",
           "data": {
             "name": "Name",
             "code": "New code",
@@ -239,8 +239,8 @@
           "hashed": "Hashed"
         }
       },
-      "last_result": {
-        "name": "Last result",
+      "last_test": {
+        "name": "Last test",
         "state": {
           "valid": "Accepted",
           "unknown_code": "Unknown code",
@@ -285,8 +285,8 @@
       "grace_mode": {
         "name": "Re-entry grace window",
         "state": {
-          "fixed": "Fixed -- runs from the use that was counted, and does not extend",
-          "sliding": "Sliding -- every re-entry restarts the window"
+          "fixed": "Fixed",
+          "sliding": "Sliding"
         }
       }
     },
@@ -295,8 +295,7 @@
       "valid_until": { "name": "Valid until" }
     },
     "text": {
-      "terminator_keys": { "name": "Terminator keys" },
-      "notes": { "name": "Notes" }
+      "terminator_keys": { "name": "Terminator keys" }
     }
   },
   "services": {

@@ -151,7 +151,7 @@ class ScopeRuntime:
     it lives here rather than in the store, and resets on any successful submission
     just like ``failed_attempts`` does.
 
-    The last-result fields are what the scope's "Last result" sensor reads. They are
+    The last-test fields are what the scope's "Last test" sensor reads. They are
     here rather than in the store for the same reason: a verdict is a live reading,
     and the audit log already keeps the history of everything that was not a dry run.
     """
@@ -164,9 +164,9 @@ class ScopeRuntime:
     last_label: str | None = None
     last_credential_id: str | None = None
     last_in_grace: bool = False
-    last_result: SubmissionResult | None = None
-    last_result_at: datetime | None = None
-    last_result_dry_run: bool = False
+    last_test: SubmissionResult | None = None
+    last_test_at: datetime | None = None
+    last_test_dry_run: bool = False
     script: Script | None = None
     script_source: list[dict[str, Any]] = field(default_factory=list)
 
@@ -506,7 +506,7 @@ class HyperPasscodeCoordinator:
         ``test_code`` service and the "Test a code" page.
 
         The one thing a dry run does leave behind is the verdict, on the scope's
-        "Last result" sensor. Without it a test would leave no trace whatsoever, and
+        "Last test" sensor. Without it a test would leave no trace whatsoever, and
         a surface that evaluates codes without counting failures or tripping the
         lockout is an unrate-limited guessing oracle. That sensor's history is what
         makes somebody working through the code space visible.
@@ -520,9 +520,9 @@ class HyperPasscodeCoordinator:
         # dispatch the scope update that the sensor reads synchronously, so the
         # verdict has to already be in place by the time they run.
         runtime = self.runtime(scope_id)
-        runtime.last_result = result
-        runtime.last_result_at = now
-        runtime.last_result_dry_run = dry_run
+        runtime.last_test = result
+        runtime.last_test_at = now
+        runtime.last_test_dry_run = dry_run
 
         if dry_run:
             # Nothing else dispatches on this path.

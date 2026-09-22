@@ -458,9 +458,9 @@ def _credential_schema(
 ) -> vol.Schema:
     """Build the add/edit form for one credential.
 
-    Only what no entity can express. The validity window, the use limits and the
-    notes are all entities on the code's own device, so a guest code can be extended
-    from a dashboard instead of through this dialog.
+    Only what no entity can express. The validity window and the use limits are all
+    entities on the code's own device, so a guest code can be extended from a
+    dashboard instead of through this dialog.
 
     When editing, the code field is left blank and means "leave the code alone" --
     a code that is not viewable cannot be shown back, so there is nothing to

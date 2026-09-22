@@ -89,7 +89,7 @@ def test_every_entity_translation_key_exists(translations):
     entity = translations["entity"]
     assert set(entity["sensor"]) == {
         "last_used",
-        "last_result",
+        "last_test",
         "failed_attempts",
         "valid_submissions",
         "invalid_submissions",
@@ -107,14 +107,13 @@ def test_every_entity_translation_key_exists(translations):
     }
     assert set(entity["select"]) == {"grace_mode"}
     assert set(entity["datetime"]) == {"valid_from", "valid_until"}
-    assert set(entity["text"]) == {"terminator_keys", "notes"}
+    assert set(entity["text"]) == {"terminator_keys"}
     assert set(entity["event"]) == {"code"}
 
 
 def test_every_grace_mode_has_a_label(translations):
-    # The dropdown's option labels are the only place the difference between the two
-    # modes is explained at the point it is chosen, so an untranslated one leaves the
-    # user picking between a bare "fixed" and a bare "sliding".
+    # An untranslated option leaves the user picking between a bare "fixed" and a
+    # bare "sliding" in the dropdown.
     from custom_components.hyper_passcode.const import GraceMode
 
     assert set(translations["entity"]["select"]["grace_mode"]["state"]) == {
@@ -167,9 +166,9 @@ def test_every_rejection_reason_can_be_reported(translations):
     )
     assert {str(event_type) for event_type in EventType} == declared
 
-    # On the last-result sensor they are enum states, and an enum sensor raises on a
+    # On the last-test sensor they are enum states, and an enum sensor raises on a
     # state outside its options -- so a new reason with no entry here would take the
     # entity down rather than merely show a bare key.
-    assert set(translations["entity"]["sensor"]["last_result"]["state"]) == {
+    assert set(translations["entity"]["sensor"]["last_test"]["state"]) == {
         str(Outcome.VALID)
     } | {str(reason) for reason in RejectionReason}

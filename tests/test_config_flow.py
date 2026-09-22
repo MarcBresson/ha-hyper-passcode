@@ -697,7 +697,7 @@ async def test_a_tested_code_still_lands_on_the_result_sensor(
         dry_run=True,
     )
 
-    state = state_of(hass, "sensor.front_door_last_result")
+    state = state_of(hass, "sensor.front_door_last_test")
     assert state.state == str(RejectionReason.UNKNOWN_CODE)
     assert state.attributes["dry_run"] is True
 
@@ -747,7 +747,7 @@ async def test_submitting_for_real_counts_the_use_and_runs_the_actions(
     assert len(coordinator.data.audit) == 1
     assert len(opened) == 1
 
-    state = state_of(hass, "sensor.front_door_last_result")
+    state = state_of(hass, "sensor.front_door_last_test")
     assert state.state == str(Outcome.VALID)
     assert state.attributes["dry_run"] is False
 
@@ -769,7 +769,7 @@ async def test_an_empty_code_is_refused_without_submitting_anything(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"code": "empty_code"}
-    assert coordinator.runtime(scope_id).last_result is None
+    assert coordinator.runtime(scope_id).last_test is None
 
 
 async def test_the_page_never_echoes_the_code_back(hass: HomeAssistant, entry):

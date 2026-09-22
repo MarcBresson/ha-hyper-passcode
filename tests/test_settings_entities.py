@@ -229,7 +229,6 @@ async def test_policy_numbers_start_at_zero_for_no_limit(
         "number.cleaner_uses_per_hour",
         "number.cleaner_uses_per_day",
         "number.cleaner_cooldown",
-        "number.cleaner_re_entry_grace_period",
     ):
         assert float(state_of(hass, entity_id).state) == 0, entity_id
 
@@ -275,9 +274,18 @@ async def test_a_policy_number_does_not_disturb_the_rest_of_the_policy(
 # ----------------------------------------------------------------------
 
 
-async def test_the_grace_window_starts_off_and_fixed(hass: HomeAssistant, entry, scope):
+async def test_the_grace_entities_are_unavailable_until_max_uses_is_set(
+    hass: HomeAssistant, entry, scope
+):
     await a_code(entry.runtime_data, scope)
     await hass.async_block_till_done()
+
+    # Neither means anything while the code has no lifetime limit to be exempted
+    # from, so both stay unavailable rather than showing an inert default.
+    assert state_of(hass, "number.cleaner_re_entry_grace_period").state == "unavailable"
+    assert state_of(hass, "select.cleaner_re_entry_grace_window").state == "unavailable"
+
+    await set_number(hass, "number.cleaner_max_uses", 1)
 
     assert float(state_of(hass, "number.cleaner_re_entry_grace_period").state) == 0
     assert state_of(hass, "select.cleaner_re_entry_grace_window").state == "fixed"
@@ -327,6 +335,7 @@ async def test_the_grace_window_mode_is_written_through_to_the_subentry(
     credential, _code = await a_code(coordinator, scope)
     await hass.async_block_till_done()
 
+    await set_number(hass, "number.cleaner_max_uses", 1)
     await set_select(hass, "select.cleaner_re_entry_grace_window", "sliding")
 
     assert credential.policy.grace_mode is GraceMode.SLIDING
@@ -341,7 +350,9 @@ async def test_a_grace_entity_does_not_disturb_the_rest_of_the_policy(
     from custom_components.hyper_passcode.models import Policy
 
     coordinator = entry.runtime_data
-    credential, _code = await a_code(coordinator, scope, policy=Policy(uses_per_day=3))
+    credential, _code = await a_code(
+        coordinator, scope, policy=Policy(uses_per_day=3, max_uses=1)
+    )
     await hass.async_block_till_done()
 
     await set_number(hass, "number.cleaner_re_entry_grace_period", 120)
@@ -390,18 +401,8 @@ async def test_the_validity_window_can_be_moved_and_cleared(
 
 
 # ----------------------------------------------------------------------
-# Notes, keep viewable
+# Keep viewable
 # ----------------------------------------------------------------------
-
-
-async def test_notes_round_trip(hass: HomeAssistant, entry, scope):
-    credential, _code = await a_code(entry.runtime_data, scope)
-    await hass.async_block_till_done()
-
-    await set_text(hass, "text.cleaner_notes", "Thursdays, back door")
-
-    assert credential.notes == "Thursdays, back door"
-    assert state_of(hass, "text.cleaner_notes").state == "Thursdays, back door"
 
 
 async def test_keep_viewable_can_be_turned_off_but_not_back_on(

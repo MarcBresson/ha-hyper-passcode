@@ -327,7 +327,7 @@ async def test_test_code_records_nothing_and_runs_nothing(
     assert not coordinator.data.audit
 
 
-async def test_the_last_result_sensor_follows_every_submission(
+async def test_the_last_test_sensor_follows_every_submission(
     hass: HomeAssistant, coordinator
 ):
     # It is not limited to the "Test a code" page: a keypad entry moves it too, and
@@ -337,12 +337,12 @@ async def test_the_last_result_sensor_follows_every_submission(
         label="Household", scope_ids=[scope.scope_id]
     )
     await hass.async_block_till_done()
-    assert state_of(hass, "sensor.front_door_last_result").state == STATE_UNKNOWN
+    assert state_of(hass, "sensor.front_door_last_test").state == STATE_UNKNOWN
 
     await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
-    state = state_of(hass, "sensor.front_door_last_result")
+    state = state_of(hass, "sensor.front_door_last_test")
     assert state.state == str(Outcome.VALID)
     assert state.attributes["label"] == "Household"
     assert state.attributes["dry_run"] is False
@@ -350,12 +350,12 @@ async def test_the_last_result_sensor_follows_every_submission(
     await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
 
-    state = state_of(hass, "sensor.front_door_last_result")
+    state = state_of(hass, "sensor.front_door_last_test")
     assert state.state == str(RejectionReason.UNKNOWN_CODE)
     assert state.attributes["label"] is None
 
 
-async def test_a_dry_run_leaves_its_verdict_on_the_last_result_sensor(
+async def test_a_dry_run_leaves_its_verdict_on_the_last_test_sensor(
     hass: HomeAssistant, coordinator
 ):
     # The one thing a dry run does record. Without it a test would leave no trace at
@@ -368,7 +368,7 @@ async def test_a_dry_run_leaves_its_verdict_on_the_last_result_sensor(
     await coordinator.async_submit(scope.scope_id, code, dry_run=True)
     await hass.async_block_till_done()
 
-    state = state_of(hass, "sensor.front_door_last_result")
+    state = state_of(hass, "sensor.front_door_last_test")
     assert state.state == str(Outcome.VALID)
     assert state.attributes["dry_run"] is True
     assert not coordinator.data.audit
