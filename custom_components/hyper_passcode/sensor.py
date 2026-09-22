@@ -55,7 +55,13 @@ async def async_setup_entry(
         entry,
         coordinator,
         async_add_entities,
-        [ScopeLastUsedSensor, ScopeLastResultSensor, ScopeFailedAttemptsSensor],
+        [
+            ScopeLastUsedSensor,
+            ScopeLastResultSensor,
+            ScopeFailedAttemptsSensor,
+            ScopeValidSubmissionsSensor,
+            ScopeInvalidSubmissionsSensor,
+        ],
     )
     async_add_credential_entities(
         hass,
@@ -180,6 +186,54 @@ class ScopeFailedAttemptsSensor(SensorEntity, HyperPasscodeScopeEntity):
     def native_value(self) -> int:
         """The current failure count."""
         return self.coordinator.runtime(self.scope_id).failed_attempts
+
+
+class ScopeValidSubmissionsSensor(SensorEntity, HyperPasscodeScopeEntity):
+    """Lifetime count of accepted submissions at this scope.
+
+    Unlike the failed-attempts counter, this never resets, so the recorder's
+    long-term statistics turn it into a "entries per day" style trend across every
+    credential this scope has ever granted.
+    """
+
+    _attr_translation_key = "valid_submissions"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_icon = "mdi:door-open"
+
+    def __init__(self, coordinator: HyperPasscodeCoordinator, scope: Scope) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, scope)
+        self._attr_unique_id = f"{scope.scope_id}_valid_submissions"
+
+    @property
+    def native_value(self) -> int | None:
+        """The lifetime count of accepted submissions."""
+        scope = self.scope
+        return scope.valid_submissions if scope else None
+
+
+class ScopeInvalidSubmissionsSensor(SensorEntity, HyperPasscodeScopeEntity):
+    """Lifetime count of refused submissions at this scope.
+
+    Distinct from the lockout mechanism: this keeps growing across lockouts and
+    restarts, so it is what backs a long-term "failed attempts per day" trend rather
+    than an in-the-moment "close to lockout" reading.
+    """
+
+    _attr_translation_key = "invalid_submissions"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_icon = "mdi:door-closed-lock"
+
+    def __init__(self, coordinator: HyperPasscodeCoordinator, scope: Scope) -> None:
+        """Set the entity's identity."""
+        super().__init__(coordinator, scope)
+        self._attr_unique_id = f"{scope.scope_id}_invalid_submissions"
+
+    @property
+    def native_value(self) -> int | None:
+        """The lifetime count of refused submissions."""
+        scope = self.scope
+        return scope.invalid_submissions if scope else None
 
 
 class CredentialUsesSensor(SensorEntity, HyperPasscodeCredentialEntity):

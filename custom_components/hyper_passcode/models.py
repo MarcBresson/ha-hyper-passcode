@@ -367,6 +367,12 @@ class Scope:
     """A target codes are entered against -- a door, a gate, an alarm.
 
     Becomes one Home Assistant Device carrying the scope's entities.
+
+    ``valid_submissions``/``invalid_submissions`` are counters rather than
+    configuration -- like a credential's ``use_count``, they change on every
+    submission -- so they are deliberately left out of ``to_dict``/``from_dict``,
+    which only round-trip what the config subentry holds. They are instead read and
+    written through ``stats_dict``, alongside the private store.
     """
 
     scope_id: str
@@ -382,9 +388,27 @@ class Scope:
     lockout_backoff_factor: float = DEFAULT_LOCKOUT_BACKOFF_FACTOR
     #: Hard cap on the escalated duration, in seconds. Zero means uncapped.
     lockout_max_duration: int = DEFAULT_LOCKOUT_MAX_DURATION
+    #: Lifetime count of accepted/refused submissions, across every credential this
+    #: scope has ever granted. Backs a monotonic sensor for long-term statistics.
+    valid_submissions: int = 0
+    invalid_submissions: int = 0
+
+    def record_submission(self, valid: bool) -> None:
+        """Count a submission that was fully processed (never a dry run)."""
+        if valid:
+            self.valid_submissions += 1
+        else:
+            self.invalid_submissions += 1
+
+    def stats_dict(self) -> dict[str, Any]:
+        """Return the counters that live in the private store."""
+        return {
+            "valid_submissions": self.valid_submissions,
+            "invalid_submissions": self.invalid_submissions,
+        }
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise for the store."""
+        """Serialise the config half for the subentry."""
         return {
             "scope_id": self.scope_id,
             "name": self.name,

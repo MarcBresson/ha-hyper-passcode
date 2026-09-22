@@ -402,3 +402,37 @@ async def test_credentials_survive_a_reload(hass: HomeAssistant, entry, coordina
     # The lookup index was rebuilt, so the original code still resolves.
     result = await reloaded.async_submit(scope.scope_id, code)
     assert result.valid is True
+
+
+async def test_scope_submission_counters_survive_a_reload(
+    hass: HomeAssistant, entry, coordinator
+):
+    scope = await coordinator.async_create_scope(name="Front Door")
+    _credential, code = await coordinator.async_create_credential(
+        label="Household", scope_ids=[scope.scope_id]
+    )
+    await coordinator.async_submit(scope.scope_id, code)
+    await coordinator.async_submit(scope.scope_id, "000111")
+    await coordinator.store.async_save()
+
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    reloaded = entry.runtime_data
+    (reloaded_scope,) = reloaded.scopes.values()
+    assert reloaded_scope.valid_submissions == 1
+    assert reloaded_scope.invalid_submissions == 1
+
+
+async def test_deleting_a_scope_drops_its_stored_counters(coordinator):
+    scope = await coordinator.async_create_scope(name="Front Door")
+    _credential, code = await coordinator.async_create_credential(
+        label="Household", scope_ids=[scope.scope_id]
+    )
+    await coordinator.async_submit(scope.scope_id, code)
+    assert scope.scope_id in coordinator.store.data.scope_stats
+
+    await coordinator.async_delete_scope(scope.scope_id)
+    coordinator.async_sync_subentries()
+
+    assert scope.scope_id not in coordinator.store.data.scope_stats

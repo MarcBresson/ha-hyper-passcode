@@ -37,9 +37,9 @@ class StoredData:
       which is what gives them "Add" buttons and per-item configure dialogs
 
     What is left here is data rather than configuration, and it is the half that has
-    to stay private: the lookup key, each credential's secret and counters, and the
-    audit log. Config entries are not written with restricted permissions, so no
-    code ever goes in one.
+    to stay private: the lookup key, each credential's secret and counters, the
+    audit log, and each scope's submission counters. Config entries are not written
+    with restricted permissions, so no code ever goes in one.
     """
 
     #: Random key backing every credential's lookup index. Generated once.
@@ -47,6 +47,8 @@ class StoredData:
     #: Keyed by credential id. See ``Credential.secret_dict``.
     secrets: dict[str, dict[str, Any]] = field(default_factory=dict)
     audit: list[AuditEntry] = field(default_factory=list)
+    #: Keyed by scope id. See ``Scope.stats_dict``.
+    scope_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def empty(cls) -> StoredData:
@@ -59,6 +61,7 @@ class StoredData:
             "key": self.key,
             "secrets": self.secrets,
             "audit": [entry.to_dict() for entry in self.audit],
+            "scope_stats": self.scope_stats,
         }
 
     @classmethod
@@ -68,6 +71,7 @@ class StoredData:
             key=data.get("key") or generate_integration_key(),
             secrets=dict(data.get("secrets") or {}),
             audit=[AuditEntry.from_dict(e) for e in data.get("audit") or []],
+            scope_stats=dict(data.get("scope_stats") or {}),
         )
 
 

@@ -538,6 +538,34 @@ async def test_a_success_resets_the_lockout_streak(hass: HomeAssistant, coordina
     assert (runtime.locked_until - now).total_seconds() == pytest.approx(10, abs=1)
 
 
+async def test_scope_submissions_are_counted_as_valid_or_invalid(
+    hass: HomeAssistant, coordinator
+):
+    created = await coordinator.async_create_scope(name="Gate")
+    # Creating the credential's subentry rebuilds every scope object, so the id
+    # rather than the object returned above is what stays valid afterwards.
+    _credential, code = await coordinator.async_create_credential(
+        label="Household", scope_ids=[created.scope_id]
+    )
+    scope_id = created.scope_id
+
+    await coordinator.async_submit(scope_id, "000111")
+    await coordinator.async_submit(scope_id, "000111")
+    await coordinator.async_submit(scope_id, code)
+
+    scope = coordinator.get_scope(scope_id)
+    assert scope.valid_submissions == 1
+    assert scope.invalid_submissions == 2
+
+    # A dry run evaluates the code but leaves the lifetime counters untouched, same
+    # as it leaves the audit log and the lockout counter untouched.
+    await coordinator.async_submit(scope_id, code, dry_run=True)
+    await coordinator.async_submit(scope_id, "000111", dry_run=True)
+    scope = coordinator.get_scope(scope_id)
+    assert scope.valid_submissions == 1
+    assert scope.invalid_submissions == 2
+
+
 async def test_a_success_clears_the_failure_counter(hass: HomeAssistant, coordinator):
     scope = await coordinator.async_create_scope(name="Gate", lockout_threshold=5)
     _credential, code = await coordinator.async_create_credential(

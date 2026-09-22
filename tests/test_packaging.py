@@ -91,6 +91,8 @@ def test_every_entity_translation_key_exists(translations):
         "last_used",
         "last_result",
         "failed_attempts",
+        "valid_submissions",
+        "invalid_submissions",
         "uses",
         "uncounted_uses",
         "last_uncounted_use",

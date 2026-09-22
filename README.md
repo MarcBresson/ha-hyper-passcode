@@ -61,6 +61,8 @@ Automations
 Monitoring
 
 - A use counter per code, and last-used and failure counters per scope
+- Lifetime valid/invalid submission counters per scope, so Home Assistant's own
+  Statistics graphs and cards show entry trends over time with no template sensors
 - An audit log with structured rejection reasons, exportable as JSON or CSV
 - Every submission also fires a bus event, so the recorder and logbook keep full history
 
@@ -74,6 +76,8 @@ Read-only:
 | `sensor.<scope>_last_used` | scope | When a code was last accepted, which one, and whether the use was inside its grace period |
 | `sensor.<scope>_last_result` | scope | Verdict on the last attempt, with the reason, the code it matched and whether it was only a test |
 | `sensor.<scope>_failed_attempts` | scope | Consecutive failures since the last success |
+| `sensor.<scope>_valid_submissions` | scope | Lifetime count of accepted submissions, across every credential ever granted here |
+| `sensor.<scope>_invalid_submissions` | scope | Lifetime count of refused submissions, unaffected by lockouts or restarts |
 | `binary_sensor.<scope>_lockout` | scope | On while the scope is refusing submissions |
 | `sensor.<code>_uses` | code | Lifetime use count, with remaining uses and window as attributes |
 

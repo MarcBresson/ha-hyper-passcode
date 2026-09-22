@@ -226,6 +226,8 @@
     "sensor": {
       "last_used": { "name": "Last used" },
       "failed_attempts": { "name": "Failed attempts" },
+      "valid_submissions": { "name": "Valid submissions" },
+      "invalid_submissions": { "name": "Invalid submissions" },
       "uses": { "name": "Uses" },
       "uncounted_uses": { "name": "Uncounted uses" },
       "last_uncounted_use": { "name": "Last uncounted use" },

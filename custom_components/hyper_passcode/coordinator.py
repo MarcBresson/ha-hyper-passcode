@@ -325,13 +325,23 @@ class HyperPasscodeCoordinator:
         page and a per-scope configure dialog. Any change to them reloads the entry,
         which lands back here.
         """
-        self._scopes = {
-            subentry_id: Scope.from_dict(
+        self._scopes = {}
+        for subentry_id, subentry in self.entry.subentries.items():
+            if subentry.subentry_type != SUBENTRY_TYPE_SCOPE:
+                continue
+            scope = Scope.from_dict(
                 {**subentry.data, "scope_id": subentry_id, "name": subentry.title}
             )
-            for subentry_id, subentry in self.entry.subentries.items()
-            if subentry.subentry_type == SUBENTRY_TYPE_SCOPE
-        }
+            stats = self.data.scope_stats.get(subentry_id, {})
+            scope.valid_submissions = stats.get("valid_submissions", 0)
+            scope.invalid_submissions = stats.get("invalid_submissions", 0)
+            self._scopes[subentry_id] = scope
+
+        orphaned = set(self.data.scope_stats) - set(self._scopes)
+        for scope_id in orphaned:
+            del self.data.scope_stats[scope_id]
+        if orphaned:
+            self.store.async_schedule_save()
 
     def _rebuild_keypads(self) -> None:
         """Read the keypad buffers back out of the config entry's subentries."""
@@ -537,6 +547,9 @@ class HyperPasscodeCoordinator:
         else:
             self._register_failure(scope, now)
 
+        scope.record_submission(result.valid)
+        self._save_scope_stats(scope)
+
         self._record_audit(scope_id, code, result, now)
         self._fire_events(scope, result)
 
@@ -638,6 +651,11 @@ class HyperPasscodeCoordinator:
         runtime.locked_until = None
         runtime.lockout_streak = 0
         async_dispatcher_send(self.hass, SIGNAL_SCOPE_UPDATED.format(scope_id))
+
+    def _save_scope_stats(self, scope: Scope) -> None:
+        """Persist a scope's lifetime submission counters."""
+        self.data.scope_stats[scope.scope_id] = scope.stats_dict()
+        self.store.async_schedule_save()
 
     def _record_audit(
         self, scope_id: str, code: str, result: SubmissionResult, now: datetime
