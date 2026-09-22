@@ -31,7 +31,6 @@ from .const import (
     ATTR_PERSON,
     ATTR_REASON,
     ATTR_SCOPE_ID,
-    ATTR_SOURCE,
     CONF_AUDIT_LOG_SIZE,
     CONF_DEFAULT_CODE_LENGTH,
     CONF_LOG_FAILED_PLAINTEXT,
@@ -57,7 +56,6 @@ from .const import (
     EventType,
     Outcome,
     RejectionReason,
-    Source,
     credential_code_unique_id,
     credential_device_identifier,
     keypad_device_identifier,
@@ -101,7 +99,6 @@ class SubmissionResult:
 
     valid: bool
     scope_id: str
-    source: str
     reason: RejectionReason | None = None
     credential_id: str | None = None
     label: str | None = None
@@ -488,7 +485,6 @@ class HyperPasscodeCoordinator:
         self,
         scope_id: str,
         code: str,
-        source: str = Source.SERVICE,
         *,
         dry_run: bool = False,
         context: Context | None = None,
@@ -508,7 +504,7 @@ class HyperPasscodeCoordinator:
         scope = self.get_scope(scope_id)
         now = dt_util.utcnow()
 
-        result = self._evaluate_submission(scope, code, source, now)
+        result = self._evaluate_submission(scope, code, now)
 
         # Before the branches below: both _register_failure and _reset_failures
         # dispatch the scope update that the sensor reads synchronously, so the
@@ -552,14 +548,13 @@ class HyperPasscodeCoordinator:
         return result
 
     def _evaluate_submission(
-        self, scope: Scope, code: str, source: str, now: datetime
+        self, scope: Scope, code: str, now: datetime
     ) -> SubmissionResult:
         """Resolve a code to a verdict without mutating anything."""
         if self.is_locked_out(scope.scope_id, now):
             return SubmissionResult(
                 valid=False,
                 scope_id=scope.scope_id,
-                source=source,
                 reason=RejectionReason.LOCKED_OUT,
             )
 
@@ -568,15 +563,13 @@ class HyperPasscodeCoordinator:
             return SubmissionResult(
                 valid=False,
                 scope_id=scope.scope_id,
-                source=source,
                 reason=RejectionReason.UNKNOWN_CODE,
             )
 
-        reason = evaluate(self.hass, credential, scope.scope_id, source, now)
+        reason = evaluate(self.hass, credential, scope.scope_id, now)
         return SubmissionResult(
             valid=reason is None,
             scope_id=scope.scope_id,
-            source=source,
             reason=reason,
             credential_id=credential.credential_id,
             label=credential.label,
@@ -654,7 +647,6 @@ class HyperPasscodeCoordinator:
             timestamp=now,
             scope_id=scope_id,
             outcome=Outcome.VALID if result.valid else Outcome.INVALID,
-            source=result.source,
             credential_id=result.credential_id,
             label=result.label,
             person=result.person,
@@ -682,7 +674,6 @@ class HyperPasscodeCoordinator:
                 ATTR_CREDENTIAL_ID: result.credential_id,
                 ATTR_LABEL: result.label,
                 ATTR_PERSON: result.person,
-                ATTR_SOURCE: result.source,
                 ATTR_IN_GRACE_PERIOD: result.accepted_in_grace,
             },
         )
@@ -712,7 +703,6 @@ class HyperPasscodeCoordinator:
                     ATTR_CREDENTIAL_ID: result.credential_id,
                     ATTR_LABEL: result.label,
                     ATTR_PERSON: result.person,
-                    ATTR_SOURCE: result.source,
                 },
                 context=context,
             )
@@ -839,7 +829,7 @@ class HyperPasscodeCoordinator:
     # ------------------------------------------------------------------
 
     async def async_submit_key(
-        self, keypad_id: str, key: str, source: str = Source.KEYPAD
+        self, keypad_id: str, key: str
     ) -> SubmissionResult | None:
         """Feed one keystroke into a keypad buffer.
 
@@ -856,13 +846,13 @@ class HyperPasscodeCoordinator:
             code, runtime.buffer = runtime.buffer, ""
             if not code:
                 return None
-            return await self.async_submit(keypad.scope_id, code, source)
+            return await self.async_submit(keypad.scope_id, code)
 
         runtime.buffer += key
 
         if keypad.code_length is not None and len(runtime.buffer) >= keypad.code_length:
             code, runtime.buffer = runtime.buffer, ""
-            return await self.async_submit(keypad.scope_id, code, source)
+            return await self.async_submit(keypad.scope_id, code)
 
         runtime.cancel_buffer_timer = async_call_later(
             self.hass,
@@ -1451,7 +1441,4 @@ class HyperPasscodeCoordinator:
         credential = self._credentials.get(credential_id)
         if credential is None:
             return False
-        return (
-            evaluate(self.hass, credential, scope_id, Source.UNKNOWN, dt_util.utcnow())
-            is None
-        )
+        return evaluate(self.hass, credential, scope_id, dt_util.utcnow()) is None

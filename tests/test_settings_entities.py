@@ -20,7 +20,6 @@ from custom_components.hyper_passcode.const import (
     DEFAULT_LOCKOUT_THRESHOLD,
     GraceMode,
     RejectionReason,
-    Source,
     StoreMethod,
 )
 from tests.helpers import set_number, set_select, set_text, state_of
@@ -149,7 +148,7 @@ async def test_a_lockout_threshold_set_from_its_entity_is_enforced(
     await set_number(hass, "number.front_door_lockout_threshold", 2)
 
     for _ in range(2):
-        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
 
     assert coordinator.is_locked_out(scope.scope_id)
@@ -245,15 +244,15 @@ async def test_a_use_limit_set_from_its_entity_is_enforced(
     await set_number(hass, "number.cleaner_max_uses", 1)
     assert credential.policy.max_uses == 1
 
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
-    refused = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
+    refused = await coordinator.async_submit(scope.scope_id, code)
     assert refused.valid is False
     assert refused.reason is RejectionReason.MAX_USES_REACHED
 
     # Zero lifts the limit again, and the code works on the very next submission.
     await set_number(hass, "number.cleaner_max_uses", 0)
     assert credential.policy.max_uses is None
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
 
 
 async def test_a_policy_number_does_not_disturb_the_rest_of_the_policy(
@@ -262,16 +261,13 @@ async def test_a_policy_number_does_not_disturb_the_rest_of_the_policy(
     from custom_components.hyper_passcode.models import Policy
 
     coordinator = entry.runtime_data
-    credential, _code = await a_code(
-        coordinator, scope, policy=Policy(uses_per_day=3, allowed_sources=["keypad"])
-    )
+    credential, _code = await a_code(coordinator, scope, policy=Policy(uses_per_day=3))
     await hass.async_block_till_done()
 
     await set_number(hass, "number.cleaner_cooldown", 60)
 
     assert credential.policy.cooldown_seconds == 60
     assert credential.policy.uses_per_day == 3
-    assert credential.policy.allowed_sources == ["keypad"]
 
 
 # ----------------------------------------------------------------------
@@ -311,12 +307,12 @@ async def test_a_grace_period_set_from_its_entity_is_enforced(
     await set_number(hass, "number.cleaner_re_entry_grace_period", 300)
     assert credential.policy.grace_period_seconds == 300
 
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
     freezer.tick(timedelta(minutes=2))
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
 
     freezer.tick(timedelta(minutes=4))
-    refused = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    refused = await coordinator.async_submit(scope.scope_id, code)
     assert refused.reason is RejectionReason.MAX_USES_REACHED
 
     # Zero turns it off, and the exemption stops on the next submission.
@@ -345,9 +341,7 @@ async def test_a_grace_entity_does_not_disturb_the_rest_of_the_policy(
     from custom_components.hyper_passcode.models import Policy
 
     coordinator = entry.runtime_data
-    credential, _code = await a_code(
-        coordinator, scope, policy=Policy(uses_per_day=3, allowed_sources=["keypad"])
-    )
+    credential, _code = await a_code(coordinator, scope, policy=Policy(uses_per_day=3))
     await hass.async_block_till_done()
 
     await set_number(hass, "number.cleaner_re_entry_grace_period", 120)
@@ -356,7 +350,6 @@ async def test_a_grace_entity_does_not_disturb_the_rest_of_the_policy(
     assert credential.policy.grace_period_seconds == 120
     assert credential.policy.grace_mode is GraceMode.SLIDING
     assert credential.policy.uses_per_day == 3
-    assert credential.policy.allowed_sources == ["keypad"]
 
 
 # ----------------------------------------------------------------------
@@ -385,7 +378,7 @@ async def test_the_validity_window_can_be_moved_and_cleared(
     await hass.async_block_till_done()
 
     assert credential.policy.valid_until == datetime(2020, 1, 1, 9, 0, tzinfo=UTC)
-    expired = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    expired = await coordinator.async_submit(scope.scope_id, code)
     assert expired.reason is RejectionReason.EXPIRED
 
     # A datetime entity can report "no bound" but cannot be set back to one, so the
@@ -393,7 +386,7 @@ async def test_the_validity_window_can_be_moved_and_cleared(
     await press(hass, "button.cleaner_clear_validity_window")
 
     assert credential.policy.valid_until is None
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
 
 
 # ----------------------------------------------------------------------
@@ -498,7 +491,7 @@ async def test_update_code_touches_only_what_it_was_given(
     )
 
     assert credential.policy.valid_until is None
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
 
 
 async def test_update_code_can_set_and_clear_the_grace_window(

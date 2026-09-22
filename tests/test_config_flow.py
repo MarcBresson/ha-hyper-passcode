@@ -25,11 +25,9 @@ from custom_components.hyper_passcode.const import (
     GraceMode,
     Outcome,
     RejectionReason,
-    Source,
     StoreMethod,
     keypad_device_identifier,
 )
-from custom_components.hyper_passcode.models import Policy
 from tests.helpers import set_number, set_select, set_text, state_of
 
 
@@ -116,7 +114,7 @@ async def test_scope_lockout_is_configured_per_scope(hass: HomeAssistant, entry)
 
     # And it is the threshold that actually governs the lockout.
     for _ in range(2):
-        await coordinator.async_submit(scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope_id, "000111")
     await hass.async_block_till_done()
     assert coordinator.is_locked_out(scope_id)
 
@@ -140,7 +138,7 @@ async def test_reconfiguring_a_scope_keeps_its_runtime_state(
     await set_number(hass, "number.front_door_lockout_threshold", 9)
 
     # Something worth preserving across an edit.
-    await coordinator.async_submit(scope_id, "000111", Source.KEYPAD)
+    await coordinator.async_submit(scope_id, "000111")
     assert coordinator.runtime(scope_id).failed_attempts == 1
 
     result = await hass.config_entries.subentries.async_init(
@@ -421,7 +419,7 @@ async def test_adding_a_code_shows_it_once_and_makes_it_work(
     assert coordinator.credentials[credential_id].label == "Cleaner"
     assert code
 
-    result = await coordinator.async_submit(scope_id, code, Source.KEYPAD)
+    result = await coordinator.async_submit(scope_id, code)
     assert result.valid is True
     assert result.label == "Cleaner"
 
@@ -501,9 +499,7 @@ async def test_a_chosen_code_is_used_as_given(hass: HomeAssistant, entry):
     )
 
     assert code == "495162"
-    assert (
-        await entry.runtime_data.async_submit(scope_id, "495162", Source.KEYPAD)
-    ).valid is True
+    assert (await entry.runtime_data.async_submit(scope_id, "495162")).valid is True
 
 
 async def test_a_weak_code_is_reported_on_the_form(hass: HomeAssistant, entry):
@@ -558,7 +554,7 @@ async def test_editing_a_code_keeps_its_use_count(hass: HomeAssistant, entry):
     credential_id, code = await add_code(hass, entry, scope_ids=[scope_id])
     coordinator = entry.runtime_data
 
-    await coordinator.async_submit(scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope_id, code)
     assert coordinator.credentials[credential_id].use_count == 1
 
     result = await hass.config_entries.subentries.async_init(
@@ -591,9 +587,7 @@ async def test_editing_a_code_keeps_its_use_count(hass: HomeAssistant, entry):
     # Editing configuration must not reset history.
     assert credential.use_count == 1
     # And the original code still works.
-    assert (
-        await entry.runtime_data.async_submit(scope_id, code, Source.KEYPAD)
-    ).valid is True
+    assert (await entry.runtime_data.async_submit(scope_id, code)).valid is True
 
 
 async def test_editing_can_replace_the_code(hass: HomeAssistant, entry):
@@ -613,8 +607,8 @@ async def test_editing_can_replace_the_code(hass: HomeAssistant, entry):
     assert result["type"] is FlowResultType.ABORT
 
     coordinator = entry.runtime_data
-    assert (await coordinator.async_submit(scope_id, "857314", Source.KEYPAD)).valid
-    assert not (await coordinator.async_submit(scope_id, old_code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope_id, "857314")).valid
+    assert not (await coordinator.async_submit(scope_id, old_code)).valid
 
 
 async def test_deleting_a_code_removes_its_entities_and_secret(
@@ -672,7 +666,6 @@ async def test_a_tested_code_reports_its_verdict_and_changes_nothing(
         result["flow_id"],
         scope_id=scope_id,
         code=code,
-        source=str(Source.UI),
         dry_run=True,
     )
 
@@ -701,14 +694,12 @@ async def test_a_tested_code_still_lands_on_the_result_sensor(
         result["flow_id"],
         scope_id=scope_id,
         code="000111",
-        source=str(Source.UI),
         dry_run=True,
     )
 
     state = state_of(hass, "sensor.front_door_last_result")
     assert state.state == str(RejectionReason.UNKNOWN_CODE)
     assert state.attributes["dry_run"] is True
-    assert state.attributes["source"] == str(Source.UI)
 
 
 async def test_a_tested_code_does_not_count_towards_the_lockout(
@@ -725,7 +716,6 @@ async def test_a_tested_code_does_not_count_towards_the_lockout(
             result["flow_id"],
             scope_id=scope_id,
             code="000111",
-            source=str(Source.UI),
             dry_run=True,
         )
 
@@ -749,7 +739,6 @@ async def test_submitting_for_real_counts_the_use_and_runs_the_actions(
         result["flow_id"],
         scope_id=scope_id,
         code=code,
-        source=str(Source.UI),
         dry_run=False,
     )
 
@@ -761,42 +750,6 @@ async def test_submitting_for_real_counts_the_use_and_runs_the_actions(
     state = state_of(hass, "sensor.front_door_last_result")
     assert state.state == str(Outcome.VALID)
     assert state.attributes["dry_run"] is False
-
-
-async def test_the_source_field_decides_an_allowed_sources_verdict(
-    hass: HomeAssistant, entry
-):
-    # The whole point of the field: a code pinned to the wall keypad can only be
-    # seen working by submitting as the keypad.
-    scope_id = await add_scope(hass, entry)
-    coordinator = entry.runtime_data
-    _credential, code = await coordinator.async_create_credential(
-        label="Keypad only",
-        scope_ids=[scope_id],
-        policy=Policy(allowed_sources=[str(Source.KEYPAD)]),
-    )
-    await hass.async_block_till_done()
-
-    result = await open_options(hass, entry, "test_code")
-    result = await submit_test_code(
-        hass,
-        result["flow_id"],
-        scope_id=scope_id,
-        code=code,
-        source=str(Source.UI),
-        dry_run=True,
-    )
-    assert str(RejectionReason.WRONG_SOURCE) in verdict(result)
-
-    result = await submit_test_code(
-        hass,
-        result["flow_id"],
-        scope_id=scope_id,
-        code=code,
-        source=str(Source.KEYPAD),
-        dry_run=True,
-    )
-    assert "accepted" in verdict(result)
 
 
 async def test_an_empty_code_is_refused_without_submitting_anything(
@@ -811,7 +764,6 @@ async def test_an_empty_code_is_refused_without_submitting_anything(
         result["flow_id"],
         scope_id=scope_id,
         code="   ",
-        source=str(Source.UI),
         dry_run=True,
     )
 
@@ -830,7 +782,6 @@ async def test_the_page_never_echoes_the_code_back(hass: HomeAssistant, entry):
         result["flow_id"],
         scope_id=scope_id,
         code=code,
-        source=str(Source.UI),
         dry_run=True,
     )
 
@@ -857,7 +808,6 @@ async def test_the_page_never_writes_options_or_reloads_the_entry(
             result["flow_id"],
             scope_id=scope_id,
             code="000111",
-            source=str(Source.UI),
             dry_run=True,
         )
 

@@ -16,7 +16,6 @@ from custom_components.hyper_passcode.const import (
     GraceMode,
     Outcome,
     RejectionReason,
-    Source,
 )
 from custom_components.hyper_passcode.exceptions import (
     CodeCollisionError,
@@ -44,7 +43,7 @@ async def test_a_valid_code_runs_the_default_action(hass: HomeAssistant, coordin
     )
     actions = async_capture_events(hass, ACTION_EVENT)
 
-    result = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    result = await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert result.valid is True
@@ -59,7 +58,7 @@ async def test_an_unknown_code_is_refused_and_runs_nothing(
     scope = await make_scope_with_action(coordinator)
     actions = async_capture_events(hass, ACTION_EVENT)
 
-    result = await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    result = await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
 
     assert result.valid is False
@@ -74,8 +73,8 @@ async def test_a_one_time_code_works_exactly_once(hass: HomeAssistant, coordinat
     )
     actions = async_capture_events(hass, ACTION_EVENT)
 
-    first = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
-    second = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    first = await coordinator.async_submit(scope.scope_id, code)
+    second = await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert first.valid is True
@@ -94,9 +93,9 @@ async def test_a_one_time_code_lets_the_driver_back_in_during_its_grace_period(
     )
     actions = async_capture_events(hass, ACTION_EVENT)
 
-    first = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    first = await coordinator.async_submit(scope.scope_id, code)
     freezer.tick(timedelta(minutes=3))
-    second = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    second = await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert first.valid is True
@@ -110,7 +109,7 @@ async def test_a_one_time_code_lets_the_driver_back_in_during_its_grace_period(
 
     # And once the window has run out, the one use it was given is gone.
     freezer.tick(timedelta(minutes=3))
-    third = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    third = await coordinator.async_submit(scope.scope_id, code)
     assert third.valid is False
     assert third.reason is RejectionReason.MAX_USES_REACHED
 
@@ -129,9 +128,7 @@ async def test_a_sliding_grace_window_keeps_a_code_open_while_the_gaps_stay_shor
     )
 
     for _ in range(3):
-        assert (
-            await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
-        ).valid
+        assert (await coordinator.async_submit(scope.scope_id, code)).valid
         freezer.tick(timedelta(minutes=3))
 
     # Three uses of a one-time code, because each re-entry pushed the window out.
@@ -140,7 +137,7 @@ async def test_a_sliding_grace_window_keeps_a_code_open_while_the_gaps_stay_shor
 
     # Let the gap exceed the window and it closes.
     freezer.tick(timedelta(minutes=3))
-    lapsed = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    lapsed = await coordinator.async_submit(scope.scope_id, code)
     assert lapsed.reason is RejectionReason.MAX_USES_REACHED
 
 
@@ -153,9 +150,9 @@ async def test_an_uncounted_use_still_reaches_the_audit_log_and_the_uses_sensor(
     )
     await hass.async_block_till_done()
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     freezer.tick(timedelta(minutes=1))
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     # Both entries are on the record: the exemption is about the allowance, not
@@ -194,7 +191,7 @@ async def test_a_graced_use_says_which_code_it_was_and_that_it_was_free(
     )
     events = async_capture_events(hass, EVENT_SUBMISSION)
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     # The first use is an ordinary one, and every surface says so.
@@ -203,7 +200,7 @@ async def test_a_graced_use_says_which_code_it_was_and_that_it_was_free(
     assert state_of(hass, last_used).attributes["in_grace_period"] is False
 
     freezer.tick(timedelta(minutes=2))
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert events[1].data["credential_id"] == credential.credential_id
@@ -234,14 +231,14 @@ async def test_a_refused_code_is_never_reported_as_graced(
     credential, code = await coordinator.async_create_otp(
         scope_id=scope.scope_id, grace_period_seconds=300
     )
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await coordinator.async_update_credential(
         credential.credential_id, {"enabled": False}
     )
     freezer.tick(timedelta(minutes=1))
     events = async_capture_events(hass, EVENT_SUBMISSION)
 
-    result = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    result = await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert result.reason is RejectionReason.DISABLED
@@ -260,9 +257,9 @@ async def test_the_scope_remembers_the_graced_use_across_a_reload(
     credential, code = await coordinator.async_create_otp(
         scope_id=scope.scope_id, grace_period_seconds=300, label="Delivery"
     )
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     freezer.tick(timedelta(minutes=2))
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     await hass.config_entries.async_reload(entry.entry_id)
@@ -281,12 +278,10 @@ async def test_testing_a_code_inside_its_grace_period_records_nothing(
     credential, code = await coordinator.async_create_otp(
         scope_id=scope.scope_id, grace_period_seconds=300
     )
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     freezer.tick(timedelta(minutes=1))
 
-    result = await coordinator.async_submit(
-        scope.scope_id, code, Source.SERVICE, dry_run=True
-    )
+    result = await coordinator.async_submit(scope.scope_id, code, dry_run=True)
 
     # A dry run reports the grace without consuming it.
     assert result.valid is True
@@ -304,13 +299,13 @@ async def test_the_use_is_counted_even_when_the_action_fails(
     )
     credential, code = await coordinator.async_create_otp(scope_id=scope.scope_id)
 
-    result = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    result = await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert result.valid is True
     assert credential.use_count == 1
 
-    again = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    again = await coordinator.async_submit(scope.scope_id, code)
     assert again.reason is RejectionReason.MAX_USES_REACHED
 
 
@@ -323,9 +318,7 @@ async def test_test_code_records_nothing_and_runs_nothing(
     )
     actions = async_capture_events(hass, ACTION_EVENT)
 
-    result = await coordinator.async_submit(
-        scope.scope_id, code, Source.SERVICE, dry_run=True
-    )
+    result = await coordinator.async_submit(scope.scope_id, code, dry_run=True)
     await hass.async_block_till_done()
 
     assert result.valid is True
@@ -346,16 +339,15 @@ async def test_the_last_result_sensor_follows_every_submission(
     await hass.async_block_till_done()
     assert state_of(hass, "sensor.front_door_last_result").state == STATE_UNKNOWN
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     state = state_of(hass, "sensor.front_door_last_result")
     assert state.state == str(Outcome.VALID)
     assert state.attributes["label"] == "Household"
-    assert state.attributes["source"] == str(Source.KEYPAD)
     assert state.attributes["dry_run"] is False
 
-    await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
 
     state = state_of(hass, "sensor.front_door_last_result")
@@ -373,7 +365,7 @@ async def test_a_dry_run_leaves_its_verdict_on_the_last_result_sensor(
         label="Household", scope_ids=[scope.scope_id]
     )
 
-    await coordinator.async_submit(scope.scope_id, code, Source.SERVICE, dry_run=True)
+    await coordinator.async_submit(scope.scope_id, code, dry_run=True)
     await hass.async_block_till_done()
 
     state = state_of(hass, "sensor.front_door_last_result")
@@ -391,9 +383,7 @@ async def test_test_code_explains_why_a_code_is_refused(
     )
     await coordinator.async_set_enabled(_credential.credential_id, False)
 
-    result = await coordinator.async_submit(
-        scope.scope_id, code, Source.SERVICE, dry_run=True
-    )
+    result = await coordinator.async_submit(scope.scope_id, code, dry_run=True)
     assert result.reason is RejectionReason.DISABLED
 
 
@@ -404,7 +394,7 @@ async def test_submission_fires_the_bus_event(hass: HomeAssistant, coordinator):
     )
     events = async_capture_events(hass, EVENT_SUBMISSION)
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert len(events) == 1
@@ -412,7 +402,6 @@ async def test_submission_fires_the_bus_event(hass: HomeAssistant, coordinator):
     assert data["outcome"] == "valid"
     assert data["event_type"] == str(EventType.VALID)
     assert data["label"] == "Household"
-    assert data["source"] == Source.KEYPAD
     assert data["device_id"] is not None
 
 
@@ -430,11 +419,11 @@ async def test_event_entity_reports_the_outcome(
     )
     assert entity_id
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
     assert state_of(hass, entity_id).attributes["event_type"] == str(EventType.VALID)
 
-    await coordinator.async_submit(scope.scope_id, "999888", Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, "999888")
     await hass.async_block_till_done()
     state = state_of(hass, entity_id)
     assert state.attributes["event_type"] == str(EventType.INVALID)
@@ -448,7 +437,7 @@ async def test_expired_code_gets_its_own_event_type(hass: HomeAssistant, coordin
         valid_until=dt_util.utcnow() - timedelta(minutes=1),
     )
 
-    result = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    result = await coordinator.async_submit(scope.scope_id, code)
     assert result.reason is RejectionReason.EXPIRED
     assert result.event_type is EventType.EXPIRED
 
@@ -465,7 +454,7 @@ async def test_lockout_trips_and_then_recovers(hass: HomeAssistant, entry, coord
     assert state_of(hass, entity_id).state == "off"
 
     for _ in range(3):
-        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
 
     assert coordinator.is_locked_out(scope.scope_id)
@@ -475,12 +464,12 @@ async def test_lockout_trips_and_then_recovers(hass: HomeAssistant, entry, coord
     _credential, code = await coordinator.async_create_credential(
         label="Household", scope_ids=[scope.scope_id]
     )
-    result = await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    result = await coordinator.async_submit(scope.scope_id, code)
     assert result.reason is RejectionReason.LOCKED_OUT
 
     # And works again once it lapses.
     coordinator.runtime(scope.scope_id).locked_until = None
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
 
 
 async def test_lockout_escalates_and_then_caps(hass: HomeAssistant, coordinator):
@@ -494,7 +483,7 @@ async def test_lockout_escalates_and_then_caps(hass: HomeAssistant, coordinator)
 
     async def trip_lockout():
         for _ in range(3):
-            await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+            await coordinator.async_submit(scope.scope_id, "000111")
 
     now = dt_util.utcnow()
 
@@ -533,17 +522,17 @@ async def test_a_success_resets_the_lockout_streak(hass: HomeAssistant, coordina
     runtime = coordinator.runtime(scope.scope_id)
 
     for _ in range(3):
-        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope.scope_id, "000111")
     assert runtime.lockout_streak == 1
 
     runtime.locked_until = None
-    assert (await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)).valid
+    assert (await coordinator.async_submit(scope.scope_id, code)).valid
     assert runtime.lockout_streak == 0
 
     # Streak restarts from scratch after the success.
     now = dt_util.utcnow()
     for _ in range(3):
-        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope.scope_id, "000111")
     assert runtime.lockout_streak == 1
     assert runtime.locked_until is not None
     assert (runtime.locked_until - now).total_seconds() == pytest.approx(10, abs=1)
@@ -556,10 +545,10 @@ async def test_a_success_clears_the_failure_counter(hass: HomeAssistant, coordin
     )
 
     for _ in range(3):
-        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope.scope_id, "000111")
     assert coordinator.runtime(scope.scope_id).failed_attempts == 3
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     assert coordinator.runtime(scope.scope_id).failed_attempts == 0
 
 
@@ -611,8 +600,8 @@ async def test_audit_log_records_both_outcomes(hass: HomeAssistant, coordinator)
         label="Household", scope_ids=[scope.scope_id]
     )
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
-    await coordinator.async_submit(scope.scope_id, "000111", Source.UI)
+    await coordinator.async_submit(scope.scope_id, code)
+    await coordinator.async_submit(scope.scope_id, "000111")
 
     entries = coordinator.data.audit
     assert len(entries) == 2
@@ -634,7 +623,7 @@ async def test_failed_plaintext_is_recorded_only_when_asked(
     coordinator = entry.runtime_data
 
     scope = await make_scope_with_action(coordinator)
-    await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, "000111")
 
     assert coordinator.data.audit[-1].typed == "000111"
 

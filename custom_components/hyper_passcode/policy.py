@@ -22,7 +22,6 @@ def evaluate(
     hass: HomeAssistant,
     credential: Credential,
     scope_id: str,
-    source: str,
     now: datetime,
 ) -> RejectionReason | None:
     """Return why ``credential`` may not be used right now, or None if it may.
@@ -40,9 +39,6 @@ def evaluate(
         return RejectionReason.DISABLED
 
     policy = credential.policy_for(scope_id)
-
-    if policy.allowed_sources and source not in policy.allowed_sources:
-        return RejectionReason.WRONG_SOURCE
 
     if policy.valid_from is not None and now < policy.valid_from:
         return RejectionReason.NOT_YET_VALID

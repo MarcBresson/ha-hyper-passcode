@@ -81,8 +81,6 @@ class Policy:
     #: per-hour / per-day limits.
     grace_period_seconds: int | None = None
     grace_mode: GraceMode = DEFAULT_GRACE_MODE
-    #: Empty means every source is allowed.
-    allowed_sources: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise for the store."""
@@ -97,7 +95,6 @@ class Policy:
             "cooldown_seconds": self.cooldown_seconds,
             "grace_period_seconds": self.grace_period_seconds,
             "grace_mode": str(self.grace_mode),
-            "allowed_sources": list(self.allowed_sources),
         }
 
     @classmethod
@@ -117,7 +114,6 @@ class Policy:
             # periods existed has no key at all, and an explicit null is how
             # update_code asks for the default back. A mode has no "unset".
             grace_mode=GraceMode(data.get("grace_mode") or DEFAULT_GRACE_MODE),
-            allowed_sources=list(data.get("allowed_sources") or []),
         )
 
 
@@ -478,7 +474,6 @@ class AuditEntry:
     timestamp: datetime
     scope_id: str
     outcome: Outcome
-    source: str
     credential_id: str | None = None
     label: str | None = None
     person: str | None = None
@@ -496,7 +491,6 @@ class AuditEntry:
             "timestamp": _dt_to_str(self.timestamp),
             "scope_id": self.scope_id,
             "outcome": str(self.outcome),
-            "source": self.source,
             "credential_id": self.credential_id,
             "label": self.label,
             "person": self.person,
@@ -515,7 +509,6 @@ class AuditEntry:
             timestamp=timestamp,
             scope_id=data.get("scope_id", ""),
             outcome=Outcome(data.get("outcome", Outcome.INVALID)),
-            source=data.get("source", ""),
             credential_id=data.get("credential_id"),
             label=data.get("label"),
             person=data.get("person"),

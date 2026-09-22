@@ -157,12 +157,10 @@
         "data": {
           "scope_id": "Scope",
           "code": "Code",
-          "source": "Source",
           "dry_run": "Test only"
         },
         "data_description": {
           "code": "Never shown again once submitted, and never echoed back into this field.",
-          "source": "Which input a credential restricted with \"allowed sources\" should be judged as coming from.",
           "dry_run": "On, the code is only checked. Turn it off and this really submits: the use is counted, a failure counts towards the lockout that protects your keypad, and the scope's actions run."
         }
       },
@@ -247,7 +245,6 @@
           "no_grant": "Not granted on this scope",
           "disabled": "Code disabled",
           "revoked": "Code revoked",
-          "wrong_source": "Wrong source",
           "not_yet_valid": "Not yet valid",
           "expired": "Expired",
           "out_of_schedule": "Outside its schedule",
@@ -306,8 +303,7 @@
       "description": "Validates a code against a scope and runs its actions if accepted.",
       "fields": {
         "scope_id": { "name": "Scope", "description": "The scope to validate against." },
-        "code": { "name": "Code", "description": "The code that was entered." },
-        "source": { "name": "Source", "description": "Where the code came from. Credentials can be restricted to particular sources." }
+        "code": { "name": "Code", "description": "The code that was entered." }
       }
     },
     "submit_key": {
@@ -315,8 +311,7 @@
       "description": "Feeds one keystroke into a keypad buffer. Submits on a terminator key or at the keypad's fixed code length, and clears itself after the inter-key timeout.",
       "fields": {
         "keypad_id": { "name": "Keypad buffer", "description": "The keypad being typed into." },
-        "key": { "name": "Key", "description": "The single key that was pressed." },
-        "source": { "name": "Source", "description": "Where the keystroke came from." }
+        "key": { "name": "Key", "description": "The single key that was pressed." }
       }
     },
     "clear_buffer": {
@@ -331,8 +326,7 @@
       "description": "Reports whether a code would be accepted, and why not if it would be refused. Records nothing and runs no actions.",
       "fields": {
         "scope_id": { "name": "Scope", "description": "The scope to test against." },
-        "code": { "name": "Code", "description": "The code to test." },
-        "source": { "name": "Source", "description": "The source to test as." }
+        "code": { "name": "Code", "description": "The code to test." }
       }
     },
     "create_code": {
@@ -356,8 +350,7 @@
         "uses_per_day": { "name": "Uses per day", "description": "Rolling 24-hour limit." },
         "cooldown_seconds": { "name": "Cooldown", "description": "Minimum gap between uses." },
         "grace_period_seconds": { "name": "Re-entry grace period", "description": "Seconds after a counted use during which further uses do not count towards the maximum -- for the delivery driver who has to come straight back out. Leave empty for none. The cooldown, and the hourly and daily limits, all still apply." },
-        "grace_mode": { "name": "Re-entry grace window", "description": "Fixed runs the window from the use that was counted and never extends it. Sliding restarts it on every use, so the code stays usable for as long as the gaps stay shorter than the period." },
-        "allowed_sources": { "name": "Allowed sources", "description": "Restricts where this code may be entered. Empty means anywhere." }
+        "grace_mode": { "name": "Re-entry grace window", "description": "Fixed runs the window from the use that was counted and never extends it. Sliding restarts it on every use, so the code stays usable for as long as the gaps stay shorter than the period." }
       }
     },
     "create_otp": {
@@ -402,8 +395,7 @@
         "uses_per_day": { "name": "Uses per day", "description": "Rolling 24-hour limit." },
         "cooldown_seconds": { "name": "Cooldown", "description": "Minimum gap between uses." },
         "grace_period_seconds": { "name": "Re-entry grace period", "description": "Seconds after a counted use during which further uses do not count towards the maximum -- for the delivery driver who has to come straight back out. Leave empty for none. The cooldown, and the hourly and daily limits, all still apply." },
-        "grace_mode": { "name": "Re-entry grace window", "description": "Fixed runs the window from the use that was counted and never extends it. Sliding restarts it on every use, so the code stays usable for as long as the gaps stay shorter than the period." },
-        "allowed_sources": { "name": "Allowed sources", "description": "Restricts where this code may be entered. Empty means anywhere." }
+        "grace_mode": { "name": "Re-entry grace window", "description": "Fixed runs the window from the use that was counted and never extends it. Sliding restarts it on every use, so the code stays usable for as long as the gaps stay shorter than the period." }
       }
     },
     "delete_code": {

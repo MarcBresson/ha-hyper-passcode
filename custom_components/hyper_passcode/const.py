@@ -133,7 +133,6 @@ class RejectionReason(StrEnum):
     NO_GRANT = "no_grant"
     DISABLED = "disabled"
     REVOKED = "revoked"
-    WRONG_SOURCE = "wrong_source"
     NOT_YET_VALID = "not_yet_valid"
     EXPIRED = "expired"
     OUT_OF_SCHEDULE = "out_of_schedule"
@@ -163,16 +162,6 @@ REASON_TO_EVENT_TYPE: Final[dict[RejectionReason, EventType]] = {
 }
 
 
-class Source(StrEnum):
-    """Where a submission came from. Scopes may restrict credentials to a subset."""
-
-    UI = "ui"
-    KEYPAD = "keypad"
-    SERVICE = "service"
-    WEBHOOK = "webhook"
-    UNKNOWN = "unknown"
-
-
 # Bus event fired for every submission, so recorder and logbook pick it up.
 EVENT_SUBMISSION: Final = f"{DOMAIN}_submission"
 
@@ -195,7 +184,6 @@ ATTR_CODE: Final = "code"
 ATTR_KEY: Final = "key"
 ATTR_LABEL: Final = "label"
 ATTR_PERSON: Final = "person"
-ATTR_SOURCE: Final = "source"
 ATTR_REASON: Final = "reason"
 ATTR_OUTCOME: Final = "outcome"
 #: Reported on accepted uses only: a refused code was excused from nothing.

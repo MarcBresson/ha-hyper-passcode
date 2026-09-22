@@ -58,7 +58,6 @@ from .const import (
     SUBENTRY_TYPE_CREDENTIAL,
     SUBENTRY_TYPE_KEYPAD,
     SUBENTRY_TYPE_SCOPE,
-    Source,
 )
 from .coordinator import SubmissionResult
 from .exceptions import CodeCollisionError, WeakCodeError
@@ -72,7 +71,6 @@ ATTR_OWNER = "owner"
 ATTR_SCHEDULE_ENTITIES = "schedule_entities"
 ATTR_CONDITION_ENTITIES = "condition_entities"
 ATTR_SCOPE_ID = "scope_id"
-ATTR_SOURCE = "source"
 ATTR_DRY_RUN = "dry_run"
 
 TITLE = "HyperPasscode"
@@ -81,10 +79,6 @@ TITLE = "HyperPasscode"
 #: kept. The code exists in clear for exactly the length of that step, and showing it
 #: there would put on screen the one thing the user just asked not to keep.
 MASKED_CODE = "****"
-
-#: What the test page can submit as. ``unknown`` is left out: it is what the engine
-#: uses for a submission with no stated origin, not something worth testing as.
-TESTABLE_SOURCES = [str(source) for source in Source if source is not Source.UNKNOWN]
 
 
 def _describe(result: SubmissionResult, dry_run: bool) -> str:
@@ -251,11 +245,8 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
         result = await coordinator.async_submit(
             user_input[ATTR_SCOPE_ID],
             code,
-            user_input[ATTR_SOURCE],
             dry_run=dry_run,
-            # A flow carries no Context for the admin who opened it. The submission
-            # is recorded with its source either way, so the audit log still says
-            # where it came from.
+            # A flow carries no Context for the admin who opened it.
         )
         return self._test_form(user_input, None, _describe(result, dry_run))
 
@@ -284,9 +275,6 @@ class HyperPasscodeOptionsFlow(OptionsFlow):
                 vol.Optional(ATTR_CODE): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.PASSWORD)
                 ),
-                vol.Required(
-                    ATTR_SOURCE, default=current.get(ATTR_SOURCE, str(Source.UI))
-                ): SelectSelector(SelectSelectorConfig(options=TESTABLE_SOURCES)),
                 vol.Required(
                     ATTR_DRY_RUN, default=current.get(ATTR_DRY_RUN, True)
                 ): BooleanSelector(),
@@ -546,9 +534,9 @@ class CredentialSubentryFlow(ConfigSubentryFlow):
     def _policy(user_input: Mapping[str, Any], current: Policy | None = None) -> Policy:
         """Lay the two entity pickers over the policy the credential already has.
 
-        Everything else in a policy -- the window, the limits, the cooldown, the
-        allowed sources -- is set through entities or actions, so an edit here must
-        carry it across untouched rather than reset it to the form's idea of empty.
+        Everything else in a policy -- the window, the limits, the cooldown -- is set
+        through entities or actions, so an edit here must carry it across untouched
+        rather than reset it to the form's idea of empty.
         """
         policy = Policy.from_dict(current.to_dict()) if current else Policy()
         policy.schedule_entities = list(user_input.get(ATTR_SCHEDULE_ENTITIES) or [])

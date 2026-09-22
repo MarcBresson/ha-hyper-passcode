@@ -15,7 +15,6 @@ def entry(minute: int, scope_id: str = "s1", outcome=Outcome.VALID) -> AuditEntr
         timestamp=START + timedelta(minutes=minute),
         scope_id=scope_id,
         outcome=outcome,
-        source="keypad",
         label=f"entry-{minute}",
     )
 

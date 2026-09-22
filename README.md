@@ -37,7 +37,6 @@ Validity
 - Any on/off entity as a condition, including `calendar`, which gives booking-driven codes
 - Lifetime use limits, rolling per-hour and per-day limits, and a cooldown between uses
 - A re-entry grace period, so a one-time code means one visit rather than one door opening
-- Source restrictions, so a code can work on the wall keypad but not the web UI
 - Enable, disable and revoke, with revocation being final
 
 Entry
@@ -216,7 +215,6 @@ action: hyper_passcode.submit
 data:
   scope_id: "<scope_id>"
   code: "495162"
-  source: keypad
 ```
 
 #### From the integration page
@@ -225,14 +223,11 @@ Settings → Devices & Services → HyperPasscode → **Configure** → **Test a
 page for trying a code by hand. Pick a scope, type the code, and it tells you what the engine
 made of it — accepted, or refused with the reason.
 
-Three things about it are worth knowing:
+Two things about it are worth knowing:
 
 - **"Test only" is on by default.** With it on, nothing happens beyond the verdict: no use is
   counted, no failure counts towards the lockout, nothing is written to the audit log and the
   scope's actions do not run. Turn it off and the page really submits.
-- **The source field matters.** A code restricted with `allowed_sources` only works from the
-  inputs it names, so a code pinned to the wall keypad will read `wrong_source` until you set
-  the source to `keypad`.
 - **The page stays open.** It redraws with the verdict after each submission, so you can work
   through several codes without reopening it. The code field is cleared every time and never
   filled back in.
@@ -267,8 +262,8 @@ YAML:
 - Locked out after too many failures
 
 Any of the code triggers can be narrowed to a single credential. Trigger data carries
-`label`, `credential_id`, `person`, `source`, `reason` and `in_grace_period` — the last
-being true only on an accepted use that a re-entry grace period excused from `max_uses`.
+`label`, `credential_id`, `person`, `reason` and `in_grace_period` — the last being true
+only on an accepted use that a re-entry grace period excused from `max_uses`.
 
 There are two device conditions as well: "is locked out" and "a credential is currently
 valid".
@@ -288,9 +283,8 @@ Rules combine, and all of them have to pass:
 | `uses_per_hour` / `uses_per_day` | Rolling windows rather than calendar-aligned, so a limit can't be doubled either side of midnight |
 | `cooldown_seconds` | Minimum gap between uses |
 | `grace_period_seconds` / `grace_mode` | Re-entry window whose uses don't count towards `max_uses`. See below |
-| `allowed_sources` | Restrict a code to the wall keypad but not the web UI, for instance |
 
-Everything in that table except the entity lists and `allowed_sources` is an entity on the
+Everything in that table except the entity lists is an entity on the
 code's device, so a rule can be read in a template and changed from an automation. A zero
 means "no limit" there, because a number entity has no way to be blank. The two dates are
 the exception: a datetime entity can report that a bound is absent but has nothing to set
@@ -359,8 +353,8 @@ data:
 ### Why a code was refused
 
 Rejections carry a structured reason: `expired`, `not_yet_valid`, `out_of_schedule`,
-`condition_failed`, `max_uses_reached`, `rate_limited`, `locked_out`, `wrong_source`,
-`unknown_code`, `disabled`, `revoked` or `no_grant`. Automations can then treat an expired
+`condition_failed`, `max_uses_reached`, `rate_limited`, `locked_out`, `unknown_code`,
+`disabled`, `revoked` or `no_grant`. Automations can then treat an expired
 guest code differently from somebody guessing at the keypad.
 
 To find out why a code isn't working without actually opening anything:

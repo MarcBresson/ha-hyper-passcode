@@ -27,7 +27,6 @@ from .const import (
     ATTR_KEYPAD_ID,
     ATTR_LABEL,
     ATTR_SCOPE_ID,
-    ATTR_SOURCE,
     DEFAULT_GRACE_MODE,
     DOMAIN,
     SERVICE_CLEAR_BUFFER,
@@ -41,7 +40,6 @@ from .const import (
     SERVICE_TEST_CODE,
     CodeType,
     GraceMode,
-    Source,
 )
 from .coordinator import HyperPasscodeCoordinator
 from .helpers import to_utc as _to_utc
@@ -73,7 +71,6 @@ POLICY_FIELDS: dict[Any, Any] = {
     # dict, and a default there would make every update_code call that left the mode
     # out silently reset it. create_code's default comes from _policy_from_call.
     vol.Optional("grace_mode"): vol.Coerce(GraceMode),
-    vol.Optional("allowed_sources"): vol.All(cv.ensure_list, [cv.string]),
 }
 
 #: The same fields for an update, where ``null`` is how a rule is removed. Without
@@ -92,7 +89,6 @@ SUBMIT_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_SCOPE_ID): cv.string,
         vol.Required(ATTR_CODE): cv.string,
-        vol.Optional(ATTR_SOURCE, default=str(Source.SERVICE)): cv.string,
     }
 )
 
@@ -100,7 +96,6 @@ SUBMIT_KEY_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_KEYPAD_ID): cv.string,
         vol.Required(ATTR_KEY): cv.string,
-        vol.Optional(ATTR_SOURCE, default=str(Source.KEYPAD)): cv.string,
     }
 )
 
@@ -170,7 +165,6 @@ TEST_CODE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_SCOPE_ID): cv.string,
         vol.Required(ATTR_CODE): cv.string,
-        vol.Optional(ATTR_SOURCE, default=str(Source.SERVICE)): cv.string,
     }
 )
 
@@ -241,7 +235,6 @@ def _policy_from_call(data: dict[str, Any]) -> Policy:
         cooldown_seconds=data.get("cooldown_seconds"),
         grace_period_seconds=data.get("grace_period_seconds"),
         grace_mode=GraceMode(data.get("grace_mode") or DEFAULT_GRACE_MODE),
-        allowed_sources=list(data.get("allowed_sources") or []),
     )
 
 
@@ -264,7 +257,6 @@ def async_register_services(hass: HomeAssistant) -> None:
         result = await _coordinator(hass).async_submit(
             call.data[ATTR_SCOPE_ID],
             call.data[ATTR_CODE],
-            call.data[ATTR_SOURCE],
             context=call.context,
         )
         return result.as_response()
@@ -272,7 +264,7 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def submit_key(call: ServiceCall) -> ServiceResponse:
         """Feed one keystroke into a keypad buffer."""
         result = await _coordinator(hass).async_submit_key(
-            call.data[ATTR_KEYPAD_ID], call.data[ATTR_KEY], call.data[ATTR_SOURCE]
+            call.data[ATTR_KEYPAD_ID], call.data[ATTR_KEY]
         )
         return result.as_response() if result else {"valid": None, "pending": True}
 
@@ -285,7 +277,6 @@ def async_register_services(hass: HomeAssistant) -> None:
         result = await _coordinator(hass).async_submit(
             call.data[ATTR_SCOPE_ID],
             call.data[ATTR_CODE],
-            call.data[ATTR_SOURCE],
             dry_run=True,
         )
         return result.as_response()

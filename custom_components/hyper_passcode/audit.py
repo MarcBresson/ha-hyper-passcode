@@ -21,7 +21,6 @@ CSV_COLUMNS = (
     "credential_id",
     "label",
     "person",
-    "source",
     "typed",
     "in_grace",
 )

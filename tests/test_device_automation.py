@@ -10,7 +10,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import async_get_device_automations
 
-from custom_components.hyper_passcode.const import DOMAIN, Source
+from custom_components.hyper_passcode.const import DOMAIN
 
 ACTION_EVENT = "hyper_passcode_trigger_fired"
 
@@ -93,7 +93,7 @@ async def test_valid_code_trigger_fires(hass: HomeAssistant, entry, coordinator)
     fired = []
     hass.bus.async_listen(ACTION_EVENT, lambda event: fired.append(event))
 
-    await coordinator.async_submit(scope.scope_id, code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, code)
     await hass.async_block_till_done()
 
     assert len(fired) == 1
@@ -127,7 +127,7 @@ async def test_wrong_code_does_not_fire_the_valid_trigger(
     fired = []
     hass.bus.async_listen(ACTION_EVENT, lambda event: fired.append(event))
 
-    await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
 
     assert not fired
@@ -168,11 +168,11 @@ async def test_trigger_can_be_narrowed_to_one_credential(
     fired = []
     hass.bus.async_listen(ACTION_EVENT, lambda event: fired.append(event))
 
-    await coordinator.async_submit(scope.scope_id, other_code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, other_code)
     await hass.async_block_till_done()
     assert not fired
 
-    await coordinator.async_submit(scope.scope_id, watched_code, Source.KEYPAD)
+    await coordinator.async_submit(scope.scope_id, watched_code)
     await hass.async_block_till_done()
     assert len(fired) == 1
 
@@ -227,7 +227,7 @@ async def test_lockout_condition_gates_an_automation(
     assert not fired
 
     for _ in range(2):
-        await coordinator.async_submit(scope.scope_id, "000111", Source.KEYPAD)
+        await coordinator.async_submit(scope.scope_id, "000111")
     await hass.async_block_till_done()
     assert coordinator.is_locked_out(scope.scope_id)
 

@@ -83,7 +83,6 @@ CREDENTIAL_CONFIG = {
         "cooldown_seconds": 30,
         "grace_period_seconds": 300,
         "grace_mode": "fixed",
-        "allowed_sources": ["keypad"],
     },
     "grants": [{"scope_id": "scope-1", "policy": None, "actions": None}],
 }
@@ -255,16 +254,13 @@ def test_scope_and_audit_round_trip():
     scope = Scope(scope_id="s", name="Gate", lockout_threshold=2)
     assert Scope.from_dict(scope.to_dict()).to_dict() == scope.to_dict()
 
-    entry = AuditEntry(
-        timestamp=WHEN, scope_id="s", outcome=Outcome.INVALID, source="ui"
-    )
+    entry = AuditEntry(timestamp=WHEN, scope_id="s", outcome=Outcome.INVALID)
     assert AuditEntry.from_dict(entry.to_dict()).to_dict() == entry.to_dict()
 
     graced = AuditEntry(
         timestamp=WHEN,
         scope_id="s",
         outcome=Outcome.VALID,
-        source="keypad",
         in_grace=True,
     )
     assert AuditEntry.from_dict(graced.to_dict()).in_grace is True

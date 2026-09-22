@@ -18,7 +18,6 @@ from .const import (
     ATTR_LABEL,
     ATTR_PERSON,
     ATTR_REASON,
-    ATTR_SOURCE,
     EventType,
 )
 from .coordinator import SIGNAL_SUBMISSION, HyperPasscodeCoordinator, SubmissionResult
@@ -69,7 +68,6 @@ class ScopeCodeEventEntity(EventEntity, HyperPasscodeScopeEntity):
                 ATTR_CREDENTIAL_ID: result.credential_id,
                 ATTR_LABEL: result.label,
                 ATTR_PERSON: result.person,
-                ATTR_SOURCE: result.source,
                 ATTR_REASON: str(result.reason) if result.reason else None,
                 ATTR_IN_GRACE_PERIOD: result.accepted_in_grace,
             },

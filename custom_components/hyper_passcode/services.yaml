@@ -10,12 +10,6 @@ submit:
       example: "495162"
       selector:
         text:
-    source:
-      default: service
-      selector:
-        select:
-          custom_value: true
-          options: [ui, keypad, service, webhook, unknown]
 
 submit_key:
   fields:
@@ -28,12 +22,6 @@ submit_key:
       example: "7"
       selector:
         text:
-    source:
-      default: keypad
-      selector:
-        select:
-          custom_value: true
-          options: [ui, keypad, service, webhook, unknown]
 
 clear_buffer:
   fields:
@@ -52,12 +40,6 @@ test_code:
       required: true
       selector:
         text:
-    source:
-      default: service
-      selector:
-        select:
-          custom_value: true
-          options: [ui, keypad, service, webhook, unknown]
 
 create_code:
   fields:
@@ -156,12 +138,6 @@ create_code:
               label: Fixed -- runs from the use that was counted, and does not extend
             - value: sliding
               label: Sliding -- every re-entry restarts the window
-    allowed_sources:
-      selector:
-        select:
-          multiple: true
-          custom_value: true
-          options: [ui, keypad, service, webhook, unknown]
 
 create_otp:
   fields:
@@ -304,12 +280,6 @@ update_code:
               label: Fixed -- runs from the use that was counted, and does not extend
             - value: sliding
               label: Sliding -- every re-entry restarts the window
-    allowed_sources:
-      selector:
-        select:
-          multiple: true
-          custom_value: true
-          options: [ui, keypad, service, webhook, unknown]
 
 delete_code:
   fields:

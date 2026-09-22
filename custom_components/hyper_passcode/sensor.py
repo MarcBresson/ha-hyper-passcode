@@ -18,7 +18,6 @@ from .const import (
     ATTR_LABEL,
     ATTR_PERSON,
     ATTR_REASON,
-    ATTR_SOURCE,
     Outcome,
     RejectionReason,
     StoreMethod,
@@ -156,7 +155,6 @@ class ScopeLastResultSensor(SensorEntity, HyperPasscodeScopeEntity):
             ATTR_LABEL: result.label,
             ATTR_CREDENTIAL_ID: result.credential_id,
             ATTR_PERSON: result.person,
-            ATTR_SOURCE: result.source,
             "dry_run": runtime.last_result_dry_run,
             "tested_at": runtime.last_result_at,
         }

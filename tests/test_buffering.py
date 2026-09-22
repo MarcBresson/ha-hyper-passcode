@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.hyper_passcode.const import RejectionReason, Source
+from custom_components.hyper_passcode.const import RejectionReason
 
 
 async def type_keys(coordinator, keypad_id: str, keys: str):
@@ -35,7 +35,6 @@ async def test_terminator_key_submits_the_buffer(hass: HomeAssistant, coordinato
 
     assert result is not None
     assert result.valid is True
-    assert result.source == Source.KEYPAD
 
 
 async def test_fixed_length_submits_without_a_terminator(

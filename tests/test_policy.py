@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.hyper_passcode.const import GraceMode, RejectionReason, Source
+from custom_components.hyper_passcode.const import GraceMode, RejectionReason
 from custom_components.hyper_passcode.models import Credential, Grant, Policy
 from custom_components.hyper_passcode.policy import (
     evaluate,
@@ -35,7 +35,6 @@ def check(hass: HomeAssistant, credential: Credential, **kwargs):
         hass,
         credential,
         kwargs.pop("scope_id", SCOPE),
-        kwargs.pop("source", str(Source.KEYPAD)),
         kwargs.pop("now", NOW),
     )
 
@@ -56,12 +55,6 @@ async def test_revoked_beats_disabled(hass: HomeAssistant):
 
 async def test_disabled(hass: HomeAssistant):
     assert check(hass, make_credential(enabled=False)) is RejectionReason.DISABLED
-
-
-async def test_wrong_source(hass: HomeAssistant):
-    credential = make_credential(Policy(allowed_sources=[str(Source.UI)]))
-    assert check(hass, credential) is RejectionReason.WRONG_SOURCE
-    assert check(hass, credential, source=str(Source.UI)) is None
 
 
 async def test_not_yet_valid(hass: HomeAssistant):
